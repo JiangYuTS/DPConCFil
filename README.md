@@ -14,7 +14,7 @@ Please refer to DPConFil_Manual.ipynb for the comprehensive manual and illustrat
 
 #### The reference of the Example data 
 
-'Example_Filaments_13CO_1.fits' is the $^{13}CO$ ($J = 1-0$) emission line of the Milky Way Imaging Scroll Painting (MWISP) within $17.7^{\circ} \leq l \leq 18.5^{\circ}$, $0^{\circ} \leq b \leq 0.8^{\circ}$ and 5 km s$^{-1}$ $\leq v \leq$ 30 km s$^{-1}$. 
+'Example_Filaments_13CO_1.fits' is the $^{13}CO$ ($J = 1-0$) emission line of the Milky Way Imaging Scroll Painting (MWISP) within $17.7^{\circ} \leq l \leq 18.5^{\circ}$, $0^{\circ} \leq b \leq 0.8^{\circ}$ and 5 km $s^{-1}$ $\leq v \leq$ 30 km $s^{-1}$. 
 
 MWISP project is a multi-line survey in $^{12}CO/^{13}CO/C^{18}O$ along the northern galactic plane with PMO-13.7m telescope.
 
