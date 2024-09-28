@@ -10,7 +10,7 @@ We sincerely welcome community contributions to its optimization. If you find an
 
 #### Direction for usage
 
-Please refer to DPConFil_Manual.ipynb for the comprehensive manual and illustrative examples on utilizing DPConFil.
+Please refer to Manuals/DPConCFil_Manual.ipynb for the comprehensive manual and illustrative examples on utilizing DPConCFil.
 
 #### The reference of the Example data 
 
