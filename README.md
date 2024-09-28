@@ -1,10 +1,10 @@
-# DPConFil
+# DPConCFil
 
 #### Introduction
 
-DPConFil: A Collection of Filament Identification and Analysis Algorithms
+DPConCFil: A Collection of Filament Identification and Analysis Algorithms
 
-DPConFil is a Python package for identification and analysis of filaments in molecular clouds. 
+DPConCFil is a Python package for identification and analysis of filaments in molecular clouds. 
 
 We sincerely welcome community contributions to its optimization. If you find an issue with the code, or would like to request additional features, please raise an issue in the repository or send me an email. Email: yujiang@pmo.ac.cn
 
@@ -18,6 +18,3 @@ Please refer to DPConFil_Manual.ipynb for the comprehensive manual and illustrat
 
 MWISP project is a multi-line survey in $^{12}CO/^{13}CO/C^{18}O$ along the northern galactic plane with PMO-13.7m telescope.
 
-### Note 
-
-We haven't uploaded the crucial part of the code yet, thus the program cannot currently run successfully.
