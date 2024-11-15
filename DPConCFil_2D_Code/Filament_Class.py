@@ -7,9 +7,9 @@ from skimage import measure, morphology
 from collections import defaultdict
 from tqdm import tqdm
 
-from . import Filament_Class_Funs_Identification as FCFI
-from . import Filament_Class_Funs_Analysis as FCFA
-from . import Filament_Class_Funs_Table as FCFT
+import Filament_Class_Funs_Identification as FCFI
+import Filament_Class_Funs_Analysis as FCFA
+import Filament_Class_Funs_Table as FCFT
 
 
 class FilamentInfor(object):
@@ -86,32 +86,26 @@ class FilamentInfor(object):
         filament_coords, filament_item, data_wcs_item, regions_data_T, start_coords, filament_item_mask_2D, lb_area = \
             FCFA.Filament_Coords(origin_data, regions_data, data_wcs, clump_coords_dict, related_ids_T, CalSub)
 
-        od_mass = origin_data[filament_coords[:, 0], filament_coords[:, 1], filament_coords[:, 2]]
-        mass_array = np.c_[od_mass, od_mass, od_mass]
+        od_mass = origin_data[filament_coords[:, 0], filament_coords[:, 1]]
+        mass_array = np.c_[od_mass, od_mass]
         filament_com = np.around((mass_array * filament_coords).sum(0) / od_mass.sum(), 3).tolist()
-        if data_wcs.naxis == 4:
-            filament_com_wcs_T = data_wcs.all_pix2world(filament_com[2], filament_com[1], filament_com[0], 0, 0)
-        elif data_wcs.naxis == 3:
-            filament_com_wcs_T = data_wcs.all_pix2world(filament_com[2], filament_com[1], filament_com[0], 0)
+        if data_wcs.naxis == 3:
+            filament_com_wcs_T = data_wcs.all_pix2world(filament_com[1], filament_com[0], 0, 0)
+        elif data_wcs.naxis == 2:
+            filament_com_wcs_T = data_wcs.all_pix2world(filament_com[1], filament_com[0], 0)
         else:
-            print('Please check the naxis of data_wcs, 3 or 4.')
-        filament_com_wcs = np.around(np.c_[filament_com_wcs_T[0], filament_com_wcs_T[1], \
-                                           filament_com_wcs_T[2] / 1000][0], 3).tolist()
-        filament_com_item = [filament_com[0] - start_coords[0], filament_com[1] - start_coords[1],
-                             filament_com[2] - start_coords[2]]
+            print('Please check the naxis of data_wcs, 2 or 3.')
+        filament_com_wcs = np.around(np.c_[filament_com_wcs_T[0], filament_com_wcs_T[1]][0], 3).tolist()
+        filament_com_item = [filament_com[0] - start_coords[0], filament_com[1] - start_coords[1]]
         D, V, size_ratio, angle = FCFA.Get_DV(filament_item, filament_com_item)
 
-        #         filament_data = np.zeros_like(origin_data)
         filament_data = self.filament_data_T.copy()
-        filament_data[filament_coords[:, 0], filament_coords[:, 1], filament_coords[:, 2]] = od_mass
+        filament_data[filament_coords[:, 0], filament_coords[:, 1]] = od_mass
 
         dc_no_sub, lengh, lw_ratio, skeleton_coords_2D, all_skeleton_coords = \
             FCFA.Cal_Lengh_Width_Ratio(False, regions_data_T, related_ids_T, connected_ids_dict, clump_coords_dict, \
                                        filament_item_mask_2D, filament_item, len(related_ids_T), SkeletonType)
         dc_no_sub = FCFA.Update_Dictionary_Cuts(dc_no_sub, start_coords)
-
-        lbv_item_start, lbv_item_end, velocity_map_item, v_skeleton_com_delta = \
-            FCFA.Cal_Velocity_Map(filament_item, skeleton_coords_2D, data_wcs_item)
 
         self.dc_no_sub = dc_no_sub
         self.clumps_number = len(related_ids_T)
@@ -123,9 +117,9 @@ class FilamentInfor(object):
         self.filament_data = filament_data
         self.filament_coords = filament_coords
         self.lb_area = lb_area
-        self.skeleton_coords_2D = skeleton_coords_2D + start_coords[1:]
+        self.skeleton_coords_2D = skeleton_coords_2D + start_coords
         if type(all_skeleton_coords) != type(None):
-            all_skeleton_coords = all_skeleton_coords + start_coords[1:]
+            all_skeleton_coords = all_skeleton_coords + start_coords
             self.all_skeleton_coords = all_skeleton_coords
         self.start_coords = start_coords
         self.filament_item = filament_item
@@ -133,8 +127,6 @@ class FilamentInfor(object):
         self.filament_com_item = filament_com_item
         self.filament_item_mask_2D = filament_item_mask_2D
         self.data_wcs_item = data_wcs_item
-        self.velocity_map_item = velocity_map_item
-        self.v_grad = v_skeleton_com_delta
 
     def Filament_Infor_All(self,related_ids=None):
         LWRatio = self.LWRatio
@@ -152,7 +144,7 @@ class FilamentInfor(object):
         for key in tqdm(keys):
             related_ids_T = related_ids[key]
             self.Filament_Infor_I(related_ids_T)
-            regions = measure.regionprops(measure.label(self.filament_item > 0, connectivity=3))
+            regions = measure.regionprops(measure.label(self.filament_item > 0, connectivity=2))
             if len(regions) > 1:
                 max_area = 0
                 for region in regions:
@@ -161,7 +153,7 @@ class FilamentInfor(object):
                         max_region = region
                 coords = max_region.coords + self.start_coords
                 filament_clump_ids_usable = list(set(self.clumpsObj.\
-                        regions_data[(coords[:, 0], coords[:, 1], coords[:, 2])].astype(int) - 1))
+                        regions_data[(coords[:, 0], coords[:, 1])].astype(int) - 1))
                 related_ids[key] = filament_clump_ids_usable
                 related_ids_T = related_ids[key]
                 self.Filament_Infor_I(related_ids_T)
@@ -177,10 +169,8 @@ class FilamentInfor(object):
                 filament_infor_all['filament_ratio'] += [self.filament_ratio]
                 filament_infor_all['filament_angle'] += [self.filament_angle]
                 filament_infor_all['lb_areas'] += [self.lb_area]
-                #                 filament_infor_all['v_spans'] += [self.v_span]
-                filament_infor_all['v_grads'] += [self.v_grad]
                 filament_regions_data[
-                    self.filament_coords[:, 0], self.filament_coords[:, 1], self.filament_coords[:, 2]] = k
+                    self.filament_coords[:, 0], self.filament_coords[:, 1]] = k
                 filament_infor_all['start_coords'] += [self.start_coords]
                 filament_infor_all['skeleton_coords_2D'] += [self.skeleton_coords_2D]
                 k += 1
@@ -194,8 +184,6 @@ class FilamentInfor(object):
         self.filament_ratio_all = filament_infor_all['filament_ratio']
         self.filament_angle_all = filament_infor_all['filament_angle']
         self.filament_lb_area_all = filament_infor_all['lb_areas']
-        #         self.filament_v_span_all = filament_infor_all['v_spans']
-        self.filament_v_grad_all = filament_infor_all['v_grads']
         self.start_coords_all = filament_infor_all['start_coords']
         self.skeleton_coords_2D_all = filament_infor_all['skeleton_coords_2D']
         self.filament_regions_data = filament_regions_data
@@ -220,13 +208,13 @@ class FilamentInfor(object):
         max_edges_record = []
 
         for index in filament_clumps_id:
-            filament_centers_LBV.append([centers[index][2], centers[index][1], centers[index][0]])
+            filament_centers_LBV.append([centers[index][1], centers[index][0]])
         sorted_id = sorted(range(len(filament_centers_LBV)), key=lambda k: filament_centers_LBV[k], reverse=False)
         filament_centers_LBV = (np.array(filament_centers_LBV)[sorted_id])
         filament_clumps_id = np.array(filament_clumps_id)[sorted_id]
 
-        filament_mask_2D = np.zeros((regions_data.shape[1], regions_data.shape[2]), dtype=np.int16)
-        filament_mask_2D[filament_coords[:, 1], filament_coords[:, 2]] = 1
+        filament_mask_2D = np.zeros((regions_data.shape[0], regions_data.shape[1]), dtype=np.int16)
+        filament_mask_2D[filament_coords[:, 0], filament_coords[:, 1]] = 1
         fil_mask = filament_mask_2D.astype(bool)
         Graph, Tree = FCFA.Graph_Infor_SubStructure(origin_data, fil_mask, filament_centers_LBV, filament_clumps_id, \
                                                     self.clumpsObj.connected_ids_dict)
@@ -248,12 +236,12 @@ class FilamentInfor(object):
 
                 if type(dictionary_cuts) != type(None) and len(related_ids_T)>0:
                     filament_coords, filament_item, data_wcs_item, regions_data_T, start_coords, filament_item_mask_2D, lb_area = \
-                        FCFA.Filament_Coords(origin_data, regions_data, data_wcs, clump_coords_dict, related_ids_T,
-                                             CalSub)
+                        FCFA.Filament_Coords(origin_data, regions_data, data_wcs, clump_coords_dict, related_ids_T,CalSub)
 
-                    fil_image = filament_item.sum(0)
+                    fil_image = filament_item
                     fil_mask = filament_item_mask_2D.astype(bool)
-                    common_clump_id, common_sc_item = FCFA.Get_Common_Skeleton(filament_clumps_id, related_ids_T,\
+
+                    common_clump_id, common_sc_item = FCFA.Get_Common_Skeleton(filament_clumps_id,related_ids_T, \
                                                                                max_path_i, max_path_used,
                                                                                skeleton_coords_record, start_coords,
                                                                                clump_coords_dict)
@@ -270,7 +258,7 @@ class FilamentInfor(object):
                     else:
                         print('Please choose the skeleton_type between Morphology and Intensity')
 
-                    skeleton_coords_record.append(skeleton_coords_2D + start_coords[1:])
+                    skeleton_coords_record.append(skeleton_coords_2D + start_coords)
                     if not small_sc:
                         #                         skeleton_coords_record.append(skeleton_coords_2D+start_coords[1:])
                         skeleton_coords_2D = skeleton_coords_2D + np.random.random(skeleton_coords_2D.shape) / 10000
@@ -297,9 +285,9 @@ class FilamentInfor(object):
                 start_coords = self.start_coords
                 regions_data_T = self.regions_data_T
                 skeleton_coords_2D = self.skeleton_coords_2D
-                fil_image = self.filament_item.sum(0)
+                fil_image = self.filament_item
                 fil_mask = self.filament_item_mask_2D.astype(bool)
-                skeleton_coords_2D = skeleton_coords_2D - start_coords[1:] + np.random.random(
+                skeleton_coords_2D = skeleton_coords_2D - start_coords + np.random.random(
                     skeleton_coords_2D.shape) / 10000
                 dictionary_cuts = FCFA.Cal_Dictionary_Cuts(SampInt, self.CalSub, regions_data_T, filament_clumps_id, \
                                                            connected_ids_dict, clump_coords_dict, skeleton_coords_2D,

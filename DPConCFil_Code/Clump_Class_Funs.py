@@ -3,7 +3,7 @@ import numpy as np
 import astropy.io.fits as fits
 from astropy.table import Table
 from skimage import measure, morphology
-from scipy import optimize, linalg
+from scipy import optimize
 
 from tqdm import tqdm
 
@@ -13,7 +13,7 @@ import FacetClumps
 def Cal_Table_From_Regions(clumpsObj):
     origin_data = clumpsObj.origin_data
     regions_data = fits.getdata(clumpsObj.mask_name)
-    regions_data = np.array(regions_data, dtype='int')
+    # regions_data = np.array(regions_data, dtype='int')
     regions_list = measure.regionprops(regions_data)
     peak_value = []
     peak_location = []
@@ -78,7 +78,7 @@ def Detect_From_Regions(clumpsObj):
     start_1 = time.time()
     start_2 = time.ctime()
     did_table, td_outcat, td_outcat_wcs = [], [], []
-    file_name, mask_name, outcat_name, outcat_wcs_name = clumpsObj.file_name, clumpsObj.mask_name, clumpsObj.outcat_name, clumpsObj.outcat_wcs_name
+    file_name, outcat_name, outcat_wcs_name = clumpsObj.file_name, clumpsObj.outcat_name, clumpsObj.outcat_wcs_name
     origin_data = clumpsObj.origin_data
     ndim = origin_data.ndim
     if ndim == 3:
@@ -87,8 +87,7 @@ def Detect_From_Regions(clumpsObj):
         raise Exception('Please check the dimensionality of the data!')
     if len(did_table['peak_value']) != 0:
         data_header = fits.getheader(file_name)
-        td_outcat, td_outcat_wcs, convert_to_WCS = FacetClumps.Detect_Files_Funs.Table_Interface(did_table, data_header,
-                                                                                                 ndim)
+        td_outcat, td_outcat_wcs, convert_to_WCS = FacetClumps.Detect_Files_Funs.Table_Interface(did_table, data_header,ndim)
         td_outcat.write(outcat_name, overwrite=True)
         td_outcat_wcs.write(outcat_wcs_name, overwrite=True)
         print('Number:', len(did_table['peak_value']))
@@ -170,15 +169,13 @@ def Gaussian_Fit(data):
     bounds_up = [parameters_init[0] * 2, parameters_init[1] + parameters_init[3], \
                  parameters_init[2] + parameters_init[4], parameters_init[3] * 2, parameters_init[4] * 2, 90]
     error_fun = lambda p: np.ravel(Single_Gaussian_Fit(*p)(*np.indices(data.shape)) - data)
-    fit_infor = optimize.least_squares(error_fun, parameters_init, f_scale=0.01,
-                                       method='trf')  # ,bounds=[bounds_low,bounds_up]
+    fit_infor = optimize.least_squares(error_fun, parameters_init, f_scale=0.01,method='trf')  # ,bounds=[bounds_low,bounds_up]
     #     fit_infor = optimize.least_squares(error_fun, parameters_init, f_scale=0.01,method = 'trf')#trf,dogbox,lm,
     k = 0
     fit_flag = 1
     while fit_infor.nfev >= 1000:
         fit_infor = optimize.least_squares(error_fun, parameters_init, f_scale=0.01, \
-                                           method='{}'.format(
-                                               ['trf', 'dogbox', 'lm'][random.randint(0, 3)]))  # trf,dogbox,lm
+                                           method='{}'.format(['trf', 'dogbox', 'lm'][random.randint(0, 3)]))  # trf,dogbox,lm
         print('Number of function evaluations done:', fit_infor.nfev)
         k += 1
         if k > 10:
@@ -239,52 +236,15 @@ def Clump_Items(real_data, regions_data, centers, index, regions_list, clump_coo
     return clump_item, center_index, start_coords
 
 
-# def Gaussian_Fit_Infor(origin_data,regions_data,centers,edges,angles):
-#     start_1 = time.time()
-#     angles_fited = []
-#     clump_coords_dict = {}
-#     connected_ids_dict = {}
-#     centers_fited = centers.copy()
-#     angles_fited = angles.copy()
-# #     total_pixels = len(origin_data.ravel())
-# #     arr_sequence = np.linspace(0,total_pixels-1,total_pixels)
-#     regions_data = np.array(regions_data,dtype='int')
-#     regions_list = measure.regionprops(regions_data)
-#     origin_data_shape = origin_data.shape
-#     for index in tqdm(range(len(centers))):
-#         clump_item,center_index,start_coords = \
-#             Clump_Items(origin_data,regions_data,centers,index,regions_list,clump_coords_dict,connected_ids_dict)
-#         if edges[index] == 0:
-#             data = clump_item.sum(0)
-#             fit_infor,fit_flag = Gaussian_Fit(data)
-#             if fit_flag:
-#                 parameters = fit_infor.x
-#                 centers_fited_index_y = np.around(parameters[1]+start_coords[1],3)
-#                 centers_fited_index_z = np.around(parameters[2]+start_coords[2],3)
-#                 if centers_fited_index_y > 0 and centers_fited_index_y<origin_data_shape[1] and \
-#                    centers_fited_index_z > 0 and centers_fited_index_z<origin_data_shape[2]:
-#                     centers_fited[index] = [centers_fited[index][0],centers_fited_index_y,centers_fited_index_z]
-#                     theta = (parameters[5]*180/np.pi)%180
-#                     if parameters[3]>parameters[4]:
-#                         theta -= 90
-#                     elif parameters[3]<parameters[4] and theta>90:
-#                         theta -= 180
-#                     angles_fited[index] = np.around(theta,2)
-#     end_1 = time.time()
-#     delta_time = np.around(end_1-start_1,2)
-#     print('Fitting Clumps Time:', delta_time)
-#     return centers_fited,angles_fited,clump_coords_dict,connected_ids_dict
-
 def Gaussian_Fit_Infor(origin_data, regions_data, centers, edges, angles):
     start_1 = time.time()
-    angles_fited = []
     clump_coords_dict = {}
     connected_ids_dict = {}
     centers_fited = centers.copy()
     angles_fited = angles.copy()
     #     total_pixels = len(origin_data.ravel())
     #     arr_sequence = np.linspace(0,total_pixels-1,total_pixels)
-    regions_data = np.array(regions_data, dtype='int')
+    # regions_data = np.array(regions_data, dtype='int')
     regions_list = measure.regionprops(regions_data)
     origin_data_shape = origin_data.shape
     for index in tqdm(range(len(centers))):

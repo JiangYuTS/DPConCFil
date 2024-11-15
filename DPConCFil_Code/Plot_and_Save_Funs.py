@@ -200,10 +200,9 @@ def Plot_Filament(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.arcmi
 
 
 def Get_Data_Item_Ranges_WCS(filamentObj, data_ranges_lbv):
-    filament_data = filamentObj.filament_data
     filament_item = filamentObj.filament_item
     start_coords = filamentObj.start_coords
-    origin_data_shape = filament_data.shape
+    origin_data_shape = filamentObj.clumpsObj.origin_data_shape
     filament_item_shape = filament_item.shape
     delta_l = (data_ranges_lbv[0][1] - data_ranges_lbv[0][0]) / origin_data_shape[2]
     delta_b = (data_ranges_lbv[1][1] - data_ranges_lbv[1][0]) / origin_data_shape[1]
@@ -269,7 +268,6 @@ def Get_Pix_Ticks(wcs_ticks, data_wcs):
 
 def Plot_PV_Integrate(filamentObj, figsize=(10, 8), fontsize=12, spacing=[0.2, 0.2, None], save_path=None):
     data_wcs = filamentObj.clumpsObj.data_wcs
-    origin_data = filamentObj.clumpsObj.origin_data
     data_ranges_lbv = filamentObj.clumpsObj.data_ranges_lbv
     data_item_ranges_lbv = Get_Data_Item_Ranges_WCS(filamentObj, data_ranges_lbv)
 
@@ -364,7 +362,7 @@ def Plot_Clumps_Velocity(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * 
     filament_regions_data = filamentObj.filament_regions_data
     filaments_data = np.zeros_like(origin_data)
     filaments_data[regions_data > 0] = origin_data[regions_data > 0]
-    dictionary_cuts = filamentObj.dictionary_cuts
+    # dictionary_cuts = filamentObj.dictionary_cuts
 
     from mpl_toolkits.axes_grid1 import make_axes_locatable
 
@@ -372,7 +370,7 @@ def Plot_Clumps_Velocity(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * 
     ax0 = fig.add_subplot(111)  # ,projection=data_wcs.celestial
 
     filament_regions_data = np.array(filament_regions_data, dtype='int')
-    filament_regions_list = measure.regionprops(filament_regions_data)
+    # filament_regions_list = measure.regionprops(filament_regions_data)
     #     for i in range(len(filament_regions_list)):
     #         region_coords = filament_regions_list[i].coords
     #         region_coords_lb = []

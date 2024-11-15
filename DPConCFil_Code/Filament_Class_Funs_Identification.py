@@ -40,24 +40,28 @@ def Dist_Line_Point(point_a, point_b, point_c):
     element = vector_ab_y * vector_ac_y + vector_ab_z * vector_ac_z
     denominator_0 = np.sqrt(vector_ab_y * vector_ab_y + vector_ab_z * vector_ab_z)
     denominator_1 = np.sqrt(vector_ac_y * vector_ac_y + vector_ac_z * vector_ac_z)
-
     theta = np.arccos(element / (denominator_0 * denominator_1))
     dist_ab_c = np.abs(denominator_1 * np.sin(theta))
     return dist_ab_c
 
 
-def Get_Line_Logic(centers, center_id, nearest_centers_id, nearest_center_id, regions_data, AllowItems):
+def Get_Line_Logic(centers,center_id,nearest_centers_id,nearest_center_id,regions_data,AllowItems):
     line_data_record = []
     line_zero_record = []
-    point_a = np.around(centers[center_id])
-    point_b = np.around(centers[nearest_center_id])
-    line_coords_3D = Get_Line_Coords_3D(point_a, point_b)
+    point_a = np.int64(np.around(centers[center_id]))
+    point_b = np.int64(np.around(centers[nearest_center_id]))
+    centers_item = centers[nearest_centers_id+[center_id]]
+    v_min = np.int64(np.around(np.min(centers_item[:,0])))
+    v_max = np.int64(np.around(np.max(centers_item[:,0])))
+    v_delta = v_max-v_min
+    v_start = np.max([0,v_min-3*v_delta])
+    v_end= v_max+3*v_delta
+    line_coords_3D = Get_Line_Coords_3D(point_a,point_b)
     for line_coord_3D in line_coords_3D:
-        line_data = regions_data[:, line_coord_3D[1], line_coord_3D[2]]
-        #         print('line_data:',line_data)
+        line_data = regions_data[v_start:v_end,line_coord_3D[1],line_coord_3D[2]]
         nearest_centers_id_T = nearest_centers_id.copy()
         nearest_centers_id_T.append(center_id)
-        line_data_intersection = set(line_data - 1) & set(nearest_centers_id_T)
+        line_data_intersection = set(line_data-1) & set(nearest_centers_id_T)
         if len(line_data_intersection) == 0:
             line_zero_record.append(line_coord_3D)
         else:
@@ -67,8 +71,8 @@ def Get_Line_Logic(centers, center_id, nearest_centers_id, nearest_center_id, re
             else:
                 line_data_record += list(line_data_intersection)
     line_data_set = list(set(line_data_record))
-    line_logic = len(line_zero_record) < 1 and len(line_data_set) < AllowItems + 3
-    return line_logic, line_data_set
+    line_logic = len(line_zero_record)<1 and len(line_data_set) < AllowItems+3
+    return line_logic,line_data_set
 
 
 def Cal_Delta_Angle(center_i, center_j, angle):
@@ -113,11 +117,9 @@ def Get_Crossing_Items(regions_data, centers, center_id, nearest_centers_id, nea
             dist_ab_c = Dist_Line_Point(centers[center_id], centers[nearest_center_id], centers[nearest_center_id_t])
             if dist_ab_c < TolDistance:
                 line_logic_0, line_data_0 = Get_Line_Logic(centers, center_id, \
-                                                           nearest_centers_id, nearest_center_id_t, regions_data,
-                                                           AllowItems)
+                                                           nearest_centers_id, nearest_center_id_t, regions_data,AllowItems)
                 line_logic_1, line_data_1 = Get_Line_Logic(centers, nearest_center_id, \
-                                                           nearest_centers_id, nearest_center_id_t, regions_data,
-                                                           AllowItems)
+                                                           nearest_centers_id, nearest_center_id_t, regions_data,AllowItems)
                 if line_logic_0 and line_logic_1:
                     line_data_dict[nearest_center_id_t] = list(set(line_data_0 + line_data_1))
                     pline_1 = [centers[center_id][2], centers[center_id][1]]

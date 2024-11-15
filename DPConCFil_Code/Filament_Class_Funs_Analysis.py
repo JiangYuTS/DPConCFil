@@ -51,7 +51,6 @@ def Filament_Coords(origin_data, regions_data, data_wcs, clump_coords_dict, rela
     else:
         lb_area = None
         data_wcs_item = None
-
     return filament_coords, filament_item, data_wcs_item, regions_data_T, start_coords, filament_item_mask_2D, lb_area
 
 
@@ -62,7 +61,6 @@ def Get_Line_Coords_2D(point_a, point_b):
     sort_index = np.argsort(np.abs(point_b - point_a))
     point_a_temp = point_a[sort_index]
     point_b_temp = point_b[sort_index]
-
     x1, y1 = point_a_temp[0], point_a_temp[1]
     x2, y2 = point_b_temp[0], point_b_temp[1]
     kx, ky = (x2 - x1), (y2 - y1)
@@ -83,7 +81,6 @@ def Get_Line_Coords_3D(point_a, point_b):
     sort_index = np.argsort(np.abs(point_b - point_a))
     point_a_temp = point_a[sort_index]
     point_b_temp = point_b[sort_index]
-
     x1, y1, z1 = point_a_temp[0], point_a_temp[1], point_a_temp[2]
     x2, y2, z2 = point_b_temp[0], point_b_temp[1], point_b_temp[2]
     kx, ky, kz = (x2 - x1), (y2 - y1), (z2 - z1)
@@ -162,14 +159,12 @@ def Graph_Infor_Connected(points):
     return Graph, Tree
 
 
-def Graph_Infor_SubStructure(origin_data, filament_mask_2D, filament_centers_LBV, filament_clumps_id,
-                             connected_ids_dict):
+def Graph_Infor_SubStructure(origin_data, filament_mask_2D, filament_centers_LBV, filament_clumps_id,connected_ids_dict):
     points_V = filament_centers_LBV[:, 2]
     points_LB = np.c_[filament_centers_LBV[:, 0], filament_centers_LBV[:, 1]]
     n_points = len(filament_centers_LBV)
     dist_matrix = Dists_Array(points_LB, points_LB)
     filament_centers_LBV = np.int64(np.around(filament_centers_LBV))
-
     Graph = nx.Graph()
     for i in range(n_points):
         neighboring_ids_T = connected_ids_dict[filament_clumps_id[i]]
@@ -248,16 +243,15 @@ def Get_Max_Path_Weight_SubStructure(origin_data, filament_centers_LBV, T):
                 path = nx.shortest_path(T, degree1_nodes[i], degree1_nodes[j])
                 path_weight = 0
                 for k in range(len(path) - 1):
-                    #                     weight_ij = \
-                    #                     origin_data[filament_centers_LBV[path[k]][2],filament_centers_LBV[path[k]][1],\
-                    #                     filament_centers_LBV[path[k]][0]] + \
-                    #                     origin_data[filament_centers_LBV[path[k+1]][2],filament_centers_LBV[path[k+1]][1],\
-                    #                     filament_centers_LBV[path[k+1]][0]]
+                    # weight_ij = \
+                    # origin_data[filament_centers_LBV[path[k]][2],filament_centers_LBV[path[k]][1],\
+                    # filament_centers_LBV[path[k]][0]] + \
+                    # origin_data[filament_centers_LBV[path[k+1]][2],filament_centers_LBV[path[k+1]][1],\
+                    # filament_centers_LBV[path[k+1]][0]]
                     line_coords = Get_Line_Coords_3D(filament_centers_LBV[path[k]], filament_centers_LBV[path[k + 1]])
                     weight_ij = origin_data[line_coords[:, 2], line_coords[:, 1], line_coords[:, 0]].mean()
                     path_weight += dist_matrix[path[k], path[k + 1]] * np.abs(
                         points_V[path[k]] - points_V[path[k + 1]]) * weight_ij
-                #                     path_weight += T[path[k]][path[k+1]]['weight']
                 paths_and_weights.append((path, path_weight))
     if len(paths_and_weights) != 0:
         max_weight = max([weight for path, weight in paths_and_weights])
@@ -332,7 +326,6 @@ def Extend_Skeleton_Coords(skeleton_coords, filament_mask_2D):
 
 
 def Get_Longest_Skeleton_Coords(filament_mask_2D):
-    # selem = morphology.square(3)
     closing_mask = morphology.closing(filament_mask_2D, morphology.square(3))
     skeleton = morphology.skeletonize(closing_mask)
     props = measure.regionprops(measure.label(skeleton))
@@ -362,7 +355,6 @@ def Cal_B_Spline(SampInt, skeleton_coords_2D, fil_mask):
         skeleton_coords_2D.shape) / 1000000
     skeleton_coords_2D = skeleton_coords_2D + random_coords
     x, y = skeleton_coords_2D[:, 0], skeleton_coords_2D[:, 1]
-    nest = -1
     tckp, up = splprep([x, y], nest=-1)
     xspline, yspline = splev(up, tckp)
     xprime, yprime = splev(up, tckp, der=1)
@@ -501,12 +493,18 @@ def Profile_Builder(image, mask, point, derivative, shift=True, fold=False):
     if shift:
         final_dist_com = np.hypot(coords_total[:, 0] - xcom, coords_total[:, 1] - ycom)
         # unfold
-        pos0 = np.where(mask_com)[0][0]
+        if len(np.where(mask_com)[0]) == 0:
+            pos0 = np.where(mask_p0)[0][0]
+        else:
+            pos0 = np.where(mask_com)[0][0]
         final_dist_com[:pos0] = -final_dist_com[:pos0]
     else:
         final_dist_com = np.hypot(coords_total[:, 0] - x0, coords_total[:, 1] - y0)
         # unfold
-        pos0 = np.where(mask_p0)[0][0]
+        if len(np.where(mask_com)[0]) == 0:
+            pos0 = np.where(mask_p0)[0][0]
+        else:
+            pos0 = np.where(mask_com)[0][0]
         final_dist_com[:pos0] = -final_dist_com[:pos0]
 
     # Fold
@@ -587,27 +585,7 @@ def Update_Dictionary_Cuts(dictionary_cuts, start_coords):
     return dictionary_cuts
 
 
-# def Get_Max_Path_Intensity_Weighted(fil_mask,Tree,mask_coords):
-#     #Node
-#     fil_mask_erosion = morphology.binary_erosion(fil_mask, morphology.selem.disk(1))
-#     fil_mask_dilation = morphology.binary_dilation(fil_mask, morphology.selem.disk(1))
-#     contour_data = fil_mask_dilation*~fil_mask_erosion
-#     degree1_nodes = [node for node in Tree.nodes if Tree.degree(node) == 1 and \
-#                         contour_data[mask_coords[node][0],mask_coords[node][1]]]
-#     max_path = []
-#     max_num_nodes = -float('inf')
-#     for i in range(len(degree1_nodes)-1):
-#         for j in range(i+1, len(degree1_nodes)):
-#             if nx.has_path(Tree, degree1_nodes[i], degree1_nodes[j]):
-#                 path = nx.shortest_path(Tree, degree1_nodes[i], degree1_nodes[j])
-#                 num_nodes = len(path)
-#                 if num_nodes > max_num_nodes:
-#                     max_num_nodes = num_nodes
-#                     max_path = path
-#     max_edges = [(max_path[i], max_path[i+1]) for i in range(len(max_path)-1)]
-#     return max_path,max_edges
-
-def Get_Common_Skeleton(filament_clumps_id, max_path_i, max_path_used, skeleton_coords_record, \
+def Get_Common_Skeleton(filament_clumps_id, related_ids_T, max_path_i, max_path_used, skeleton_coords_record, \
                         start_coords, clump_coords_dict):
     common_clump_id = None
     common_sc_item = None
@@ -638,6 +616,8 @@ def Get_Common_Skeleton(filament_clumps_id, max_path_i, max_path_used, skeleton_
             third_len = len(common_skeleton_coords) // 3 + 1
             common_skeleton_coords = common_skeleton_coords[third_len:2 * third_len]
             common_sc_item = common_skeleton_coords - start_coords[1:]
+    if common_clump_id not in related_ids_T[:1] and common_clump_id not in related_ids_T[-1:]:
+        common_sc_item = None
     return common_clump_id, common_sc_item
 
 
@@ -728,7 +708,7 @@ def Trim_Skeleton_Coords_2D(skeleton_coords_2D, fil_mask, CalSubSK=False, SmallS
             skeleton_coords_2D = Extend_Skeleton_Coords(skeleton_coords_2D, fil_mask)
     else:
         small_sc = True
-        print('Small skeleton_coords_2D!')
+        # print('Small skeleton_coords_2D!')
     G_longest_skeleton, T_longest_skeleton = Graph_Infor(skeleton_coords_2D)
     max_path, max_edges = Get_Max_Path_Node(T_longest_skeleton)
     skeleton_coords_2D = skeleton_coords_2D[max_path]
@@ -949,6 +929,4 @@ def Cal_Velocity_Map(filament_item, skeleton_coords_2D, data_wcs_item):
     v_skeleton_com_i = velocity_map_item[(skeleton_coords_2D[:, 0], skeleton_coords_2D[:, 1])]
     v_skeleton_com_delta = np.around(v_skeleton_com_i.max() - v_skeleton_com_i.min(), 3)
     return lbv_item_start, lbv_item_end, velocity_map_item, v_skeleton_com_delta
-
-
 

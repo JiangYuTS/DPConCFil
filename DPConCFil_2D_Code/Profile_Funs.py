@@ -1,6 +1,20 @@
+import time
 import numpy as np
 
 from radfil import radfil_class
+
+
+def Construct_radObj(filamentObj):
+    fil_image = filamentObj.filament_data
+    radObj = radfil_class.radfil(fil_image)
+
+    radObj.shift = True
+    radObj.binning = False
+    radObj.fold = False
+    radObj.xall = filamentObj.xall_peak
+    radObj.yall = filamentObj.yall_peak
+
+    filamentObj.radObj = radObj
 
 
 def Cal_Mean_Profile(filamentObj, EProfileTime=2, EProfileLen=6, ExtendRange=20):
@@ -130,19 +144,6 @@ def Cal_Profile_IOU(filamentObj, MeanProfile=True):
             profile_IOU_is.append(profile_IOU_i)
         profile_IOU = np.around(np.mean(profile_IOU_is), 2)
     filamentObj.profile_IOU = profile_IOU
-
-
-def Construct_radObj(filamentObj):
-    fil_image = filamentObj.filament_data.sum(0)
-    radObj = radfil_class.radfil(fil_image)
-
-    radObj.shift = True
-    radObj.binning = False
-    radObj.fold = False
-    radObj.xall = filamentObj.xall_peak
-    radObj.yall = filamentObj.yall_peak
-
-    filamentObj.radObj = radObj
 
 
 def Fit_Profile(filamentObj, FitFunc='Gaussian', FitDist=None, FitMeanProfile=False, BGDist=None, BGDegree=0,

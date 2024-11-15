@@ -1,0 +1,2 @@
+RMS,Threshold,SWindow,KBins,FwhmBeam,VeloRes,SRecursionLBV,Start,End,DTime,CToWCS
+0.2,1.0,3,35,2,2,"[16, 5]",Fri Nov 15 16:40:00 2024,Fri Nov 15 16:40:00 2024,0.18,True
