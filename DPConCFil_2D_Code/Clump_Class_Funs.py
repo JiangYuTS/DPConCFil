@@ -254,10 +254,10 @@ def Get_Data_Ranges_WCS(origin_data,data_wcs):
     origin_data_shape = origin_data.shape
     if data_wcs.naxis==3:
         data_ranges_start = data_wcs.all_pix2world(0,0,0,0)
-        data_ranges_end = data_wcs.all_pix2world(origin_data_shape[1],origin_data_shape[0],0,0)
+        data_ranges_end = data_wcs.all_pix2world(origin_data_shape[1]-1,origin_data_shape[0]-1,0,0)
     elif data_wcs.naxis==2:
         data_ranges_start = data_wcs.all_pix2world(0,0,0)
-        data_ranges_end = data_wcs.all_pix2world(origin_data_shape[1],origin_data_shape[0],0)
+        data_ranges_end = data_wcs.all_pix2world(origin_data_shape[1]-1,origin_data_shape[0]-1,0)
     data_ranges_lbv = [[data_ranges_start[0].tolist(),data_ranges_end[0].tolist()],\
                        [data_ranges_start[1].tolist(),data_ranges_end[1].tolist()]]
     return data_ranges_lbv

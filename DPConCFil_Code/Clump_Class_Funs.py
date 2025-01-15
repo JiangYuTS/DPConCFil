@@ -42,8 +42,8 @@ def Cal_Table_From_Regions(clumpsObj):
         mass_array = np.c_[od_mass, od_mass, od_mass]
         com = np.around((mass_array * clump_coords).sum(0) \
                         / od_mass.sum(), 3).tolist()
-        size = np.sqrt((mass_array * (np.array(clump_coords) ** 2)).sum(0) / od_mass.sum() - \
-                       ((mass_array * np.array(clump_coords)).sum(0) / od_mass.sum()) ** 2)
+        size = np.sqrt(np.abs((mass_array * (np.array(clump_coords) ** 2)).sum(0) / od_mass.sum() - \
+                       ((mass_array * np.array(clump_coords)).sum(0) / od_mass.sum()) ** 2))
         clump_com.append(com)
         clump_size.append(size.tolist())
         com_item = [com[0] - clump_x_min, com[1] - clump_y_min, com[2] - clump_z_min]
@@ -108,30 +108,19 @@ def Detect_From_Regions(clumpsObj):
     return did_tables
 
 
-def Build_RC_Dict(com, regions_array, regions_first):
+def Build_RC_Dict_Simplified(com, regions_array, regions_list):
     k1 = 0
-    k2 = 0
-    i_record = []
-    temp_rc_dict = {}
     rc_dict = {}
-    new_regions = []
-    temp_regions_array = np.zeros_like(regions_array)
-    for i in range(1, np.int64(regions_array.max() + 1)):
-        temp_rc_dict[i] = []
+    for i in range(1, len(regions_list)+1):
+        rc_dict[i] = []
     center = np.array(np.around(com, 0), dtype='uint16')
     for cent in center:
         if regions_array[cent[0], cent[1], cent[2]] != 0:
-            temp_rc_dict[regions_array[cent[0], cent[1], cent[2]]].append(k1)
-            i_record.append(regions_array[cent[0], cent[1], cent[2]])
+            rc_dict[regions_array[cent[0], cent[1], cent[2]]].append(k1)
+        else:
+            print('Lose com:',cent)
         k1 += 1
-    for i in range(1, np.int64(regions_array.max()) + 1):
-        if i in i_record:
-            coordinates = regions_first[i - 1].coords
-            temp_regions_array[(coordinates[:, 0], coordinates[:, 1], coordinates[:, 2])] = k2 + 1
-            new_regions.append(regions_first[i - 1])
-            rc_dict[k2] = temp_rc_dict[i]
-            k2 += 1
-    return new_regions, temp_regions_array, rc_dict
+    return rc_dict
 
 
 def Single_Gaussian_Fit(*parameters_init):

@@ -766,7 +766,7 @@ def Get_Max_Path_Intensity_Weighted(fil_mask,Tree,mask_coords,common_mask_coords
     paths_and_weights = []
     max_path = []
     max_edges = []
-    if type(common_mask_coords_id) != type(None):
+    if type(common_mask_coords_id) != type(None) and len(common_mask_coords_id)>0:
         for i in common_mask_coords_id:
             for j in range(len(degree1_nodes)):
                 path = nx.shortest_path(Tree, i, degree1_nodes[j])

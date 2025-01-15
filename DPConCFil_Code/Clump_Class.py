@@ -69,8 +69,8 @@ class ClumpInfor(object):
             angles = outcat_table['Angle']
 
             regions_label = measure.label(regions_data > 0, connectivity=3)
-            regions = measure.regionprops(regions_label)
-            new_regions, temp_regions_array, rc_dict = Clump_Class_Funs.Build_RC_Dict(peaks, regions_label, regions)
+            regions_list = measure.regionprops(regions_label)
+            rc_dict = Clump_Class_Funs.Build_RC_Dict_Simplified(peaks, regions_label, regions_list)
 
             if fit_flag:
                 centers, angles, clump_coords_dict, connected_ids_dict = \
@@ -90,6 +90,7 @@ class ClumpInfor(object):
             self.regions_data = regions_data
             self.centers = centers
             self.centers_wcs = centers_wcs
+            self.peaks = peaks
             self.edges = edges
             self.angles = angles
             self.rc_dict = rc_dict

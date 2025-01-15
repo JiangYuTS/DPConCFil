@@ -144,7 +144,7 @@ class FilamentInfor(object):
 
         if type(related_ids) == type(None):
             self.Filament_Clumps_Relation()
-        related_ids = self.related_ids
+            related_ids = self.related_ids
         filament_infor_all = defaultdict(list)
         filament_regions_data = np.zeros_like(self.clumpsObj.regions_data, dtype=np.int32)
         keys = list(related_ids.keys())
@@ -194,7 +194,6 @@ class FilamentInfor(object):
         self.filament_ratio_all = filament_infor_all['filament_ratio']
         self.filament_angle_all = filament_infor_all['filament_angle']
         self.filament_lb_area_all = filament_infor_all['lb_areas']
-        #         self.filament_v_span_all = filament_infor_all['v_spans']
         self.filament_v_grad_all = filament_infor_all['v_grads']
         self.start_coords_all = filament_infor_all['start_coords']
         self.skeleton_coords_2D_all = filament_infor_all['skeleton_coords_2D']

@@ -1,9 +1,7 @@
 import time
 import numpy as np
-from skimage import filters, measure, morphology
-from scipy.stats import multivariate_normal
-from scipy import optimize, linalg
-import scipy.ndimage as ndimage
+from skimage import measure, morphology
+from scipy import ndimage
 from collections import defaultdict
 from scipy.interpolate import splprep, splev, RegularGridInterpolator
 import networkx as nx
@@ -692,7 +690,6 @@ def Trim_Skeleton_Coords_2D(skeleton_coords_2D, fil_mask, CalSubSK=False, SmallS
                 skeleton_coords_2D = np.r_[skeleton_coords_2D[:id_item_TT], skeleton_coords_2D[id_item_TT + 1:]]
         skeleton_coords_2D_len = len(skeleton_coords_2D)
         id_item += 1
-    # skeleton_coords_2D 延长并取最长
     skeleton_mask = np.zeros_like(fil_mask)
     skeleton_mask[(skeleton_coords_2D[:, 0], skeleton_coords_2D[:, 1])] = 1
     props = measure.regionprops(measure.label(skeleton_mask))
@@ -725,15 +722,29 @@ def Search_Max_Path_And_Edges(paths_and_weights):
     return max_weight, max_path, max_edges
 
 
-def Get_Max_Path_Intensity_Weighted(fil_mask, Tree, mask_coords, common_mask_coords_id=None):
-    # Weight
-    fil_mask_erosion = morphology.binary_erosion(fil_mask, morphology.disk(1))
-    fil_mask_dilation = morphology.binary_dilation(fil_mask, morphology.disk(1))
+def Fill_Mask_Holes(fil_mask,max_hole_size=4):
+    labeled_image, num_features = ndimage.label(fil_mask == 0)
+    sizes = np.bincount(labeled_image.ravel())
+    filtered_mask = fil_mask.copy()
+    for region_id, size in enumerate(sizes):
+        if size > 0 and size <= max_hole_size:
+            filtered_mask[labeled_image == region_id] = 1
+    # filled_image = ndimage.binary_fill_holes(fil_mask)
+    regions_list = measure.regionprops(np.array(filtered_mask, dtype='int'))
+    mask_coords = regions_list[0].coords
+    fil_mask_erosion = morphology.binary_erosion(filtered_mask, morphology.disk(1))
+    fil_mask_dilation = morphology.binary_dilation(filtered_mask, morphology.disk(1))
     contour_data = fil_mask_dilation * ~fil_mask_erosion
+    return filtered_mask,mask_coords,contour_data
+
+
+def Get_Max_Path_Intensity_Weighted(fil_mask, Tree, common_mask_coords_id=None):
+    # Weight
+    fil_mask,mask_coords,contour_data = Fill_Mask_Holes(fil_mask)
     degree1_nodes = [node for node in Tree.nodes if Tree.degree(node) == 1 and \
                      contour_data[mask_coords[node][0], mask_coords[node][1]]]
     paths_and_weights = []
-    if type(common_mask_coords_id) != type(None):
+    if type(common_mask_coords_id) != type(None) and len(common_mask_coords_id)>0:
         for i in common_mask_coords_id:
             for j in range(len(degree1_nodes)):
                 path = nx.shortest_path(Tree, i, degree1_nodes[j])
@@ -756,7 +767,8 @@ def Get_Max_Path_Intensity_Weighted(fil_mask, Tree, mask_coords, common_mask_coo
     return max_path, max_edges
 
 
-def Get_Max_Path_Intensity_Weighted_Fast(fil_mask, Tree, mask_coords, clump_numbers):
+def Get_Max_Path_Intensity_Weighted_Fast(fil_mask, Tree, clump_numbers):
+    fil_mask,mask_coords,contour_data = Fill_Mask_Holes(fil_mask)
     min_weight = float('inf')
     edge_coords_1 = np.where(mask_coords[:, 0] == mask_coords[:, 0].min())[0].tolist()
     edge_coords_2 = np.where(mask_coords[:, 0] == mask_coords[:, 0].max())[0].tolist()
@@ -764,9 +776,6 @@ def Get_Max_Path_Intensity_Weighted_Fast(fil_mask, Tree, mask_coords, clump_numb
     edge_coords_4 = np.where(mask_coords[:, 1] == mask_coords[:, 1].max())[0].tolist()
     edge_coords = list(set(edge_coords_1 + edge_coords_2 + edge_coords_3 + edge_coords_4))
     if clump_numbers < 1000:
-        fil_mask_erosion = morphology.binary_erosion(fil_mask, morphology.disk(1))
-        fil_mask_dilation = morphology.binary_dilation(fil_mask, morphology.disk(1))
-        contour_data = fil_mask_dilation * ~fil_mask_erosion
         degree1_nodes = [node for node in Tree.nodes if Tree.degree(node) == 1 and \
                          contour_data[mask_coords[node][0], mask_coords[node][1]]]
         for (u, v, data) in Tree.edges(data=True):
@@ -814,6 +823,7 @@ def Get_Max_Path_Intensity_Weighted_Fast(fil_mask, Tree, mask_coords, clump_numb
     return max_path_2, max_edges_2
 
 
+
 def Get_Single_Filament_Skeleton_Weighted(fil_image, fil_mask, clump_numbers, common_sc_item=None, SmallSkeleton=6):
     CalSubSK = type(common_sc_item) != type(None)
     fil_image_filtered = ndimage.uniform_filter(fil_image, size=3)
@@ -840,9 +850,9 @@ def Get_Single_Filament_Skeleton_Weighted(fil_image, fil_mask, clump_numbers, co
         common_mask_coords_id = None
     Tree = nx.minimum_spanning_tree(Graph_find_skeleton)
     if clump_numbers < 100 or CalSubSK:
-        max_path, max_edges = Get_Max_Path_Intensity_Weighted(fil_mask, Tree, mask_coords, common_mask_coords_id)
+        max_path, max_edges = Get_Max_Path_Intensity_Weighted(fil_mask, Tree, common_mask_coords_id)
     else:
-        max_path, max_edges = Get_Max_Path_Intensity_Weighted_Fast(fil_mask, Tree, mask_coords, clump_numbers)
+        max_path, max_edges = Get_Max_Path_Intensity_Weighted_Fast(fil_mask, Tree, clump_numbers)
     skeleton_coords_2D = mask_coords[max_path]
     skeleton_coords_2D, small_sc = Trim_Skeleton_Coords_2D(skeleton_coords_2D, fil_mask, CalSubSK, SmallSkeleton)
     return skeleton_coords_2D, small_sc

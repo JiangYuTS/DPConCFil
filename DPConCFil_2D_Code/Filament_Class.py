@@ -136,7 +136,7 @@ class FilamentInfor(object):
 
         if type(related_ids) == type(None):
             self.Filament_Clumps_Relation()
-        related_ids = self.related_ids
+            related_ids = self.related_ids
         filament_infor_all = defaultdict(list)
         filament_regions_data = np.zeros_like(self.clumpsObj.regions_data, dtype=np.int32)
         keys = list(related_ids.keys())

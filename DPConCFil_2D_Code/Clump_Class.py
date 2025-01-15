@@ -85,6 +85,7 @@ class ClumpInfor(object):
         self.regions_data = regions_data
         self.centers = centers
         self.centers_wcs = centers_wcs
+        self.peaks = peaks
         self.edges = edges
         self.angles = angles
         self.rc_dict = rc_dict
