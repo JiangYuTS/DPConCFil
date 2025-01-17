@@ -824,7 +824,6 @@ def Get_Max_Path_Intensity_Weighted_Fast(fil_mask, mask_coords, Tree, clump_numb
 
 
 def Get_Single_Filament_Skeleton_Weighted(fil_image, fil_mask, clump_numbers, common_sc_item=None, SmallSkeleton=6):
-    print(1)
     CalSubSK = type(common_sc_item) != type(None)
     fil_image_filtered = ndimage.uniform_filter(fil_image, size=3)
     regions_list = measure.regionprops(np.array(fil_mask, dtype='int'))
