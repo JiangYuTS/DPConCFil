@@ -4,7 +4,7 @@ import astropy.io.fits as fits
 from astropy.table import Table
 from skimage import measure, morphology
 from scipy import optimize
-
+import copy
 from tqdm import tqdm
 
 import FacetClumps
@@ -174,16 +174,9 @@ def Gaussian_Fit(data):
     return fit_infor, fit_flag
 
 
-def Alternative_Np_Where(arr, arr_sequence, goal_value):
-    goal_logic = arr == goal_value
-    goal_logic_indexs = arr_sequence[np.array(goal_logic.flat)].astype('int')
-    coords = np.unravel_index(goal_logic_indexs, arr.shape)
-    return coords
-
-
-def Clump_Items(real_data, regions_data, centers, index, regions_list, clump_coords_dict, connected_ids_dict):
-    #     coords = np.where(regions_data == index+1)
-    #     clump_coords = Alternative_Np_Where(regions_data,arr_sequence,index+1)
+def Clump_Items_Con(input_data,index,regions_list,output_dicts):
+    origin_data,regions_data = input_data[0],input_data[1]
+    clump_coords_dict,connected_ids_dict_lists = output_dicts
     clump_coords = regions_list[index].coords
     clump_coords_dict[index] = clump_coords
     core_x = clump_coords[:, 0]
@@ -203,42 +196,37 @@ def Clump_Items(real_data, regions_data, centers, index, regions_list, clump_coo
     start_x = np.int64((length - (x_max - x_min)) / 2)
     start_y = np.int64((length - (y_max - y_min)) / 2)
     start_z = np.int64((length - (z_max - z_min)) / 2)
-    clump_item[core_x - x_min + start_x, core_y - y_min + start_y, core_z - z_min + start_z] = real_data[
-        core_x, core_y, core_z]
-    center_index = [centers[index][0] - x_min + start_x, centers[index][1] - y_min + start_y,
-                    centers[index][2] - z_min + start_z]
+    clump_item[core_x - x_min + start_x, core_y - y_min + start_y, core_z - z_min + start_z] = origin_data[core_x, core_y, core_z]
+    
     start_coords = [x_min - start_x, y_min - start_y, z_min - start_z]
-    start_x_for_dilation = max(x_min - start_x, 0)
-    start_y_for_dilation = max(y_min - start_y, 0)
-    start_z_for_dilation = max(z_min - start_z, 0)
-    clump_region_box = regions_data[start_x_for_dilation:start_x_for_dilation + length, \
-                       start_y_for_dilation:start_y_for_dilation + length,
-                       start_z_for_dilation:start_z_for_dilation + length]
-    clump_item_region_box = np.zeros_like(clump_region_box)
-    clump_item_region_box[
-        core_x - start_x_for_dilation, core_y - start_y_for_dilation, core_z - start_z_for_dilation] = 1
-    # selem = morphology.ball(1)
-    clump_item_region_box_dilated = morphology.dilation(clump_item_region_box, morphology.ball(1))
-    clump_region_multipled = (clump_item_region_box_dilated - clump_item_region_box) * clump_region_box
-    connected_centers_id = list(set((clump_region_multipled[clump_region_multipled.astype(bool)] - 1).astype(int)))
-    connected_ids_dict[index] = connected_centers_id
-    return clump_item, center_index, start_coords
+    start_x_for_de = max(x_min - start_x, 0)
+    start_y_for_de = max(y_min - start_y, 0)
+    start_z_for_de = max(z_min - start_z, 0)
+    
+    for i in range(3):
+        regions_data_erosed = input_data[1+i]
+        clump_region_box = regions_data_erosed[start_x_for_de:start_x_for_de + length,
+                                               start_y_for_de:start_y_for_de + length,
+                                               start_z_for_de:start_z_for_de + length]
+        clump_item_region_box = np.zeros_like(clump_region_box)
+        clump_item_region_box[core_x - start_x_for_de, core_y - start_y_for_de, core_z - start_z_for_de] = 1
+        clump_item_region_box_dilated = morphology.dilation(clump_item_region_box, morphology.ball(1))
+        clump_region_multipled = (clump_item_region_box_dilated - clump_item_region_box) * clump_region_box
+        connected_centers_id = list(set((clump_region_multipled[clump_region_multipled.astype(bool)] - 1).astype(int)))
+        connected_ids_dict_lists[i][index] = connected_centers_id
+    return clump_item, start_coords, output_dicts
 
 
-def Gaussian_Fit_Infor(origin_data, regions_data, centers, edges, angles):
+def Gaussian_Fit_Infor(input_data, regions_list, centers, edges, angles):
     start_1 = time.time()
     clump_coords_dict = {}
-    connected_ids_dict = {}
+    connected_ids_dict_lists = [{},{},{}]
+    output_dicts = [clump_coords_dict,connected_ids_dict_lists]
     centers_fited = centers.copy()
     angles_fited = angles.copy()
-    #     total_pixels = len(origin_data.ravel())
-    #     arr_sequence = np.linspace(0,total_pixels-1,total_pixels)
-    # regions_data = np.array(regions_data, dtype='int')
-    regions_list = measure.regionprops(regions_data)
-    origin_data_shape = origin_data.shape
+    origin_data_shape = input_data[0].shape
     for index in tqdm(range(len(centers))):
-        clump_item, center_index, start_coords = \
-            Clump_Items(origin_data, regions_data, centers, index, regions_list, clump_coords_dict, connected_ids_dict)
+        clump_item, start_coords, output_dicts = Clump_Items_Con(input_data,index,regions_list,output_dicts)
         if edges[index] == 0:
             data = clump_item.sum(0)
             fit_infor, fit_flag = Gaussian_Fit(data)
@@ -263,7 +251,7 @@ def Gaussian_Fit_Infor(origin_data, regions_data, centers, edges, angles):
     end_1 = time.time()
     delta_time = np.around(end_1 - start_1, 2)
     print('Fitting Clumps Time:', delta_time)
-    return centers_fited, angles_fited, clump_coords_dict, connected_ids_dict
+    return centers_fited, angles_fited, clump_coords_dict, connected_ids_dict_lists
 
 
 def Get_Data_Ranges_WCS(origin_data, data_wcs):
@@ -275,7 +263,7 @@ def Get_Data_Ranges_WCS(origin_data, data_wcs):
     elif data_wcs.naxis == 3:
         data_ranges_start = data_wcs.all_pix2world(0, 0, 0, 0)
         data_ranges_end = data_wcs.all_pix2world(origin_data_shape[2] - 1, origin_data_shape[1] - 1, \
-                                                 origin_data_shape[0], 0)
+                                                 origin_data_shape[0] - 1, 0)
     data_ranges_lbv = [[data_ranges_start[0].tolist(), data_ranges_end[0].tolist()], \
                        [data_ranges_start[1].tolist(), data_ranges_end[1].tolist()], \
                        [data_ranges_start[2] / 1000, data_ranges_end[2] / 1000]]

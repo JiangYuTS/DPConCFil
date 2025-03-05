@@ -30,48 +30,40 @@ class FilamentInfor(object):
         self.substructure_num = []
         self.substructure_ids = []
 
-        filament_data_T = np.zeros_like(clumpsObj.origin_data)
-        self.filament_data_T = filament_data_T
+        # filament_data_T = np.zeros_like(clumpsObj.origin_data)
+        # self.filament_data_T = filament_data_T
 
     def Filament_Clumps_Relation(self):
         TolAngle = self.TolAngle
         TolDistance = self.TolDistance
-        AllowItems = self.AllowItems
         regions_data = self.clumpsObj.regions_data
         centers = self.clumpsObj.centers
         edges = self.clumpsObj.edges
         angles = self.clumpsObj.angles
         rc_dict = self.clumpsObj.rc_dict
-        # clump_coords_dict = self.clumpsObj.clump_coords_dict
-        connected_ids_dict = self.clumpsObj.connected_ids_dict
-
-        related_ids_record = {}
-        between_items_record = {}
-        line_items_record = {}
+        connected_ids_dict_lists = self.clumpsObj.connected_ids_dict_lists
+        
+        related_ids = {}
         for key in tqdm(rc_dict.keys()):
             rr_centers_id = rc_dict[key]
-            rr_centers = np.array(centers)[np.array(rr_centers_id)]
-            rr_angles = np.array(angles)[np.array(rr_centers_id)]
-            if len(rr_centers) > 1:
-                related_ids, between_items, line_items = FCFI.Get_Related_Ids_RR \
-                    (regions_data, centers, rr_centers_id, connected_ids_dict, edges, angles, TolAngle, TolDistance,
-                     AllowItems)
-                for i in range(len(related_ids)):
-                    len_0 = len(related_ids)
-                    related_ids = FCFI.Update_Related_Ids(related_ids)
-                    len_1 = len(related_ids)
+            if len(rr_centers_id) > 0:
+                rr_centers = np.array(centers)[np.array(rr_centers_id)]
+                rr_angles = np.array(angles)[np.array(rr_centers_id)]
+                related_ids_temp, dist_con_items = FCFI.Get_Related_Ids_RR \
+                    (regions_data, centers, rr_centers_id, connected_ids_dict_lists, edges, angles, TolAngle, TolDistance)
+        
+                for i in range(len(related_ids_temp)):
+                    len_0 = len(related_ids_temp)
+                    related_ids_temp = FCFI.Update_Related_Ids(related_ids_temp)
+                    len_1 = len(related_ids_temp)
                     if len_0 == len_1:
                         break
-                for key_1 in related_ids.keys():
-                    related_ids_record[key_1] = related_ids[key_1]
-                for key_2 in between_items.keys():
-                    between_items_record[key_2] = between_items[key_2]
-                for key_3 in line_items.keys():
-                    line_items_record[key_3] = line_items[key_3]
+                for key_1 in related_ids_temp.keys():
+                    related_ids[key_1] = related_ids_temp[key_1]
+        related_ids_add_enhanced = FCFI.Add_Isolated_Con_Neighbor(related_ids,connected_ids_dict_lists[1])
 
-        self.related_ids = related_ids_record
-        self.between_items_record = between_items_record
-        self.line_items_record = line_items_record
+        self.related_ids = related_ids_add_enhanced #related_ids
+        self.related_ids_add_enhanced = related_ids_add_enhanced.copy()
 
     def Filament_Infor_I(self, related_ids_T):
         data_wcs = self.clumpsObj.data_wcs
@@ -102,8 +94,8 @@ class FilamentInfor(object):
         D, V, size_ratio, angle = FCFA.Get_DV(filament_item, filament_com_item)
 
         #         filament_data = np.zeros_like(origin_data)
-        filament_data = self.filament_data_T.copy()
-        filament_data[filament_coords[:, 0], filament_coords[:, 1], filament_coords[:, 2]] = od_mass
+        # filament_data = self.filament_data_T.copy()
+        # filament_data[filament_coords[:, 0], filament_coords[:, 1], filament_coords[:, 2]] = od_mass
 
         dc_no_sub, lengh, lw_ratio, skeleton_coords_2D, all_skeleton_coords = \
             FCFA.Cal_Lengh_Width_Ratio(False, regions_data_T, related_ids_T, connected_ids_dict, clump_coords_dict, \
@@ -120,7 +112,7 @@ class FilamentInfor(object):
         self.filament_length = lengh
         self.filament_ratio = lw_ratio
         self.filament_angle = angle
-        self.filament_data = filament_data
+        # self.filament_data = filament_data
         self.filament_coords = filament_coords
         self.lb_area = lb_area
         self.skeleton_coords_2D = skeleton_coords_2D + start_coords[1:]

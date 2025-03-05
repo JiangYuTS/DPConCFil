@@ -1,10 +1,16 @@
 import numpy as np
-
+import copy
 from radfil import radfil_class
 
 
 def Cal_Mean_Profile(filamentObj, EProfileTime=2, EProfileLen=6, ExtendRange=20):
-    dictionary_cuts = filamentObj.dictionary_cuts
+    dictionary_cuts = copy.deepcopy(filamentObj.dictionary_cuts)
+    start_coords = filamentObj.start_coords
+    for key in ['plot_peaks', 'plot_cuts']:
+        dictionary_cuts[key] = np.array(dictionary_cuts[key]) - start_coords[1:][::-1]
+    for i in range(len(dictionary_cuts['points'])):
+        dictionary_cuts['points'][i] -= start_coords[1:][::-1]
+
     filamentObj.EProfileTime = EProfileTime
     filamentObj.ExtendRange = ExtendRange
     mean_arr = []
@@ -133,7 +139,7 @@ def Cal_Profile_IOU(filamentObj, MeanProfile=True):
 
 
 def Construct_radObj(filamentObj):
-    fil_image = filamentObj.filament_data.sum(0)
+    fil_image = filamentObj.filament_item.sum(0)
     radObj = radfil_class.radfil(fil_image)
 
     radObj.shift = True
