@@ -1,30 +1,7 @@
 import time
 import numpy as np
 from tqdm import tqdm
-
-
-def Get_Line_Coords_3D(point_a, point_b):
-    coords = []
-    point_a = np.array(point_a)
-    point_b = np.array(point_b)
-    sort_index = np.argsort(np.abs(point_b - point_a))
-    point_a_temp = point_a[sort_index]
-    point_b_temp = point_b[sort_index]
-
-    x1, y1, z1 = point_a_temp[0], point_a_temp[1], point_a_temp[2]
-    x2, y2, z2 = point_b_temp[0], point_b_temp[1], point_b_temp[2]
-    kx, ky, kz = (x2 - x1), (y2 - y1), (z2 - z1)
-    k_norm = np.sqrt(kx ** 2 + ky ** 2 + kz ** 2)
-    for z in range(min(int(round(z1)), int(round(z2))), max(int(round(z1)), int(round(z2))) + 1):
-        x = x1 + kx * (z - z1) / kz
-        y = y1 + ky * (z - z1) / kz
-        coords.append((int(round(x)), int(round(y)), int(round(z))))
-    index_0 = np.where(sort_index == 0)[0]
-    index_1 = np.where(sort_index == 1)[0]
-    index_2 = np.where(sort_index == 2)[0]
-    coords_xy = np.c_[np.array(coords)[:, index_0], np.array(coords)[:, index_1]]
-    line_coords = np.c_[coords_xy, np.array(coords)[:, index_2]].astype('int')
-    return line_coords
+import copy
 
 
 def Dist_Line_Point(point_a, point_b, point_c):
@@ -43,36 +20,6 @@ def Dist_Line_Point(point_a, point_b, point_c):
     theta = np.arccos(element / (denominator_0 * denominator_1))
     dist_ab_c = np.abs(denominator_1 * np.sin(theta))
     return dist_ab_c
-
-
-def Get_Line_Logic(centers,center_id,nearest_centers_id,nearest_center_id,regions_data,AllowItems):
-    line_data_record = []
-    line_zero_record = []
-    point_a = np.int64(np.around(centers[center_id]))
-    point_b = np.int64(np.around(centers[nearest_center_id]))
-    centers_item = centers[nearest_centers_id+[center_id]]
-    v_min = np.int64(np.around(np.min(centers_item[:,0])))
-    v_max = np.int64(np.around(np.max(centers_item[:,0])))
-    v_delta = v_max-v_min
-    v_start = np.max([0,v_min-3*v_delta])
-    v_end= v_max+3*v_delta
-    line_coords_3D = Get_Line_Coords_3D(point_a,point_b)
-    for line_coord_3D in line_coords_3D:
-        line_data = regions_data[v_start:v_end,line_coord_3D[1],line_coord_3D[2]]
-        nearest_centers_id_T = nearest_centers_id.copy()
-        nearest_centers_id_T.append(center_id)
-        line_data_intersection = set(line_data-1) & set(nearest_centers_id_T)
-        if len(line_data_intersection) == 0:
-            line_zero_record.append(line_coord_3D)
-        else:
-            if center_id in line_data_intersection or nearest_center_id in line_data_intersection:
-                line_data_record.append(center_id)
-                line_data_record.append(nearest_center_id)
-            else:
-                line_data_record += list(line_data_intersection)
-    line_data_set = list(set(line_data_record))
-    line_logic = len(line_zero_record)<1 and len(line_data_set) < AllowItems+3
-    return line_logic,line_data_set
 
 
 def Cal_Delta_Angle(center_i, center_j, angle):
@@ -106,53 +53,7 @@ def Between_Item_Logic(point_1, point_2, pedal_point):
         return False
     else:
         return True
-
-
-def Get_Crossing_Items(regions_data, centers, center_id, nearest_centers_id, nearest_center_id, \
-                       crossing_items, line_data_set, TolDistance, AllowItems):
-    line_data_dict = {}
-    min_center_id = np.min([center_id, nearest_center_id])
-    for nearest_center_id_t in nearest_centers_id:
-        if nearest_center_id_t != center_id and nearest_center_id_t != nearest_center_id:
-            dist_ab_c = Dist_Line_Point(centers[center_id], centers[nearest_center_id], centers[nearest_center_id_t])
-            if dist_ab_c < TolDistance:
-                line_logic_0, line_data_0 = Get_Line_Logic(centers, center_id, \
-                                                           nearest_centers_id, nearest_center_id_t, regions_data,AllowItems)
-                line_logic_1, line_data_1 = Get_Line_Logic(centers, nearest_center_id, \
-                                                           nearest_centers_id, nearest_center_id_t, regions_data,AllowItems)
-                if line_logic_0 and line_logic_1:
-                    line_data_dict[nearest_center_id_t] = list(set(line_data_0 + line_data_1))
-                    pline_1 = [centers[center_id][2], centers[center_id][1]]
-                    pline_2 = [centers[nearest_center_id][2], centers[nearest_center_id][1]]
-                    pitem = [centers[nearest_center_id_t][2], centers[nearest_center_id_t][1]]
-                    pedal_point = Pedal_Point(pline_1, pline_2, pitem)
-                    between_item_logic = Between_Item_Logic(pline_1, pline_2, pedal_point)
-                    if between_item_logic and nearest_center_id_t not in crossing_items[min_center_id][0]:
-                        crossing_items[min_center_id][0] += [nearest_center_id_t]
-                    elif nearest_center_id_t not in crossing_items[min_center_id][1]:
-                        crossing_items[min_center_id][1] += [nearest_center_id_t]
-    # 所有在line_data_set内的都需要满足TolDistance才允许保留
-    remove_flag = 0
-    if len(line_data_set) - len(crossing_items[min_center_id][0]) > 2:
-        remove_flag = 1
-        nearest_center_id_temps = crossing_items[min_center_id][0] + crossing_items[min_center_id][1]
-        for nearest_center_id_t in nearest_center_id_temps:
-            if nearest_center_id_t in crossing_items[min_center_id][0]:
-                crossing_items[min_center_id][0].remove(nearest_center_id_t)
-            else:
-                crossing_items[min_center_id][1].remove(nearest_center_id_t)
-    # items中的item对应的line_data_i需要在items中
-    items = list(
-        set([center_id] + [nearest_center_id] + crossing_items[min_center_id][0] + crossing_items[min_center_id][1]))
-    for nearest_center_id_t in line_data_dict.keys():
-        for line_data_i in line_data_dict[nearest_center_id_t]:
-            if line_data_i not in items:
-                if nearest_center_id_t in crossing_items[min_center_id][0]:
-                    crossing_items[min_center_id][0].remove(nearest_center_id_t)
-    #                 elif nearest_center_id_t in crossing_items[min_center_id][1]:
-    #                     crossing_items[min_center_id][1].remove(nearest_center_id_t)
-    return crossing_items, remove_flag
-
+        
 
 def Add_Items_To_Related_Ids(related_ids, crossing_items, new_items_dict, item_flag):
     #     item_flag=0:between,item_flag=1,line
@@ -170,52 +71,113 @@ def Add_Items_To_Related_Ids(related_ids, crossing_items, new_items_dict, item_f
     return related_ids, new_items_dict
 
 
-def Get_Related_Ids_RR(regions_data, centers, rr_centers_id, connected_ids_dict, edges, angles, TolAngle, TolDistance,
-                       AllowItems):
+def Estimate_Direction_Consistency(centers,angles,connected_ids_dict,center_id_i,center_id_j,\
+                                   dist_con_items,related_ids,TolAngle,TolDistance):
+    center_i = centers[center_id_i]
+    center_j = centers[center_id_j]
+    # con_center_ids_i = connected_ids_dict[center_id_i]
+    con_center_ids_j = connected_ids_dict[center_id_j]
+    delta_angle_1 = Cal_Delta_Angle(center_i, center_j, angles[center_id_i])
+    delta_angle_2 = Cal_Delta_Angle(center_i, center_j, angles[center_id_j])
+    angle_logic = False
+    if delta_angle_1 < TolAngle and delta_angle_2 < TolAngle:
+        angle_logic = True
+        related_ids[center_id_i].append(center_id_j)
+        # for con_center_id_j in con_center_ids_j:
+        #     delta_vbl_1 = np.abs(centers[center_id_i] - centers[con_center_id_j])
+            # delta_vbl_2 = np.abs(centers[center_id_j] - centers[con_center_id_j])
+            # if  np.argmax(delta_vbl_1) == 0 :#or np.argmax(delta_vbl_2) == 0:
+            #     con_center_ids_ij.remove(con_center_id_j)
+        dist_con_items = Estimate_Position_Consistency(centers,center_id_i,center_id_j,con_center_ids_j,dist_con_items,TolDistance)
+    return dist_con_items,related_ids,angle_logic
+    
+
+def Estimate_Position_Consistency(centers,center_id_i,center_id_j,con_center_ids_ij,dist_con_items,TolDistance,WeightFactor=[1,1,1]):
+    for con_center_id_ij in con_center_ids_ij:
+        if center_id_i != center_id_j and con_center_id_ij != center_id_i and con_center_id_ij != center_id_j:
+            dist_ab_c = Dist_Line_Point(centers[center_id_i], centers[center_id_j], centers[con_center_id_ij])
+            if dist_ab_c < TolDistance:
+                pline_1 = [centers[center_id_i][2], centers[center_id_i][1]]
+                pline_2 = [centers[center_id_j][2], centers[center_id_j][1]]
+                pitem = [centers[con_center_id_ij][2], centers[con_center_id_ij][1]]
+                pedal_point = Pedal_Point(pline_1, pline_2, pitem)
+                between_item_logic = Between_Item_Logic(pline_1, pline_2, pedal_point)
+                if between_item_logic and con_center_id_ij not in dist_con_items[center_id_i][0]:
+                    dist_con_items[center_id_i][0] += [con_center_id_ij]
+                elif con_center_id_ij not in dist_con_items[center_id_i][1]:
+                    delta_vbl_1 = np.abs(centers[center_id_i] - centers[con_center_id_ij])*WeightFactor
+                    if  np.argmax(delta_vbl_1) != 0 :
+                        dist_con_items[center_id_i][1] += [con_center_id_ij]
+    return dist_con_items
+
+
+def Estimate_Position_Consistency_2(centers,center_id_i,center_id_j,line_center_id,con_center_ids_ij,dist_con_items,\
+                                    TolDistance,WeightFactor=[1,1,1]):
+    for con_center_id_ij in con_center_ids_ij:
+        if con_center_id_ij != center_id_i and con_center_id_ij != center_id_j and con_center_id_ij != line_center_id:
+            dist_ab_c = Dist_Line_Point(centers[center_id_i], centers[center_id_j], centers[con_center_id_ij])
+            if dist_ab_c < TolDistance:
+                pline_1 = [centers[center_id_i][2], centers[center_id_i][1]]
+                pline_2 = [centers[line_center_id][2], centers[line_center_id][1]]
+                pitem = [centers[con_center_id_ij][2], centers[con_center_id_ij][1]]
+                pedal_point = Pedal_Point(pline_1, pline_2, pitem)
+                between_item_logic_1 = Between_Item_Logic(pline_1, pline_2, pedal_point)
+                pline_1 = [centers[center_id_j][2], centers[center_id_j][1]]
+                pline_2 = [centers[line_center_id][2], centers[line_center_id][1]]
+                pitem = [centers[con_center_id_ij][2], centers[con_center_id_ij][1]]
+                pedal_point = Pedal_Point(pline_1, pline_2, pitem)
+                between_item_logic_2 = Between_Item_Logic(pline_1, pline_2, pedal_point)
+                if between_item_logic_1 or between_item_logic_2:
+                    continue
+                elif con_center_id_ij not in dist_con_items[center_id_j][1]:
+                    delta_vbl_1 = np.abs(centers[center_id_j] - centers[con_center_id_ij])*WeightFactor
+                    if  np.argmax(delta_vbl_1) != 0 :
+                        dist_con_items[center_id_j][1] += [con_center_id_ij]
+    return dist_con_items
+
+
+def Get_Related_Ids_RR(regions_data,centers,rr_centers_id,connected_ids_dict_lists,edges,angles,TolAngle,TolDistance):
     related_ids = {}
     line_items = {}
     between_items = {}
-    crossing_items = {}
+    dist_con_items = {}
+    connected_ids_dict_1 = connected_ids_dict_lists[0]
+    connected_ids_dict_2 = connected_ids_dict_lists[1]
+    connected_ids_dict_3 = connected_ids_dict_lists[2]
     for center_id in rr_centers_id:
         related_ids[center_id] = []
-        crossing_items[center_id] = [[], []]
-    for center_id in rr_centers_id:
-        if edges[center_id] == 0:  # or edges[center_id] == 1
-            center_i = centers[center_id]
-            nearest_centers_id = connected_ids_dict[center_id]
-            for nearest_center_id in nearest_centers_id:
-                if edges[nearest_center_id] == 0:
-                    center_j = centers[nearest_center_id]
-                    delta_angle_1 = Cal_Delta_Angle(center_i, center_j, angles[center_id])
-                    delta_angle_2 = Cal_Delta_Angle(center_i, center_j, angles[nearest_center_id])
-                    line_logic, line_data_set = Get_Line_Logic(centers, center_id, nearest_centers_id,
-                                                               nearest_center_id, regions_data, AllowItems)
-                    if delta_angle_1 < TolAngle and delta_angle_2 < TolAngle and line_logic and center_id < nearest_center_id:
-                        related_ids[center_id].append(nearest_center_id)
-                        nearest_centers_id_j = connected_ids_dict[nearest_center_id]
-                        nearest_centers_id_ij = list(set(nearest_centers_id + nearest_centers_id_j))
-                        crossing_items, remove_flag = Get_Crossing_Items(regions_data, centers, center_id, \
-                                                                         nearest_centers_id_ij, nearest_center_id,
-                                                                         crossing_items, line_data_set, TolDistance,
-                                                                         AllowItems)
-                        if remove_flag:
-                            related_ids[center_id].remove(nearest_center_id)
-                        else:
-                            line_centers_id = list(set(crossing_items[center_id][1].copy()))
-                            for line_center_id in line_centers_id:
-                                nearest_centers_id_j = connected_ids_dict[line_center_id]
-                                nearest_centers_id_ij = nearest_centers_id_j + [line_center_id]
-                                nearest_centers_id_ij = list(set(nearest_centers_id_ij))
-                                crossing_items, remove_flag = Get_Crossing_Items(regions_data, centers, center_id, \
-                                                                                 nearest_centers_id_ij,
-                                                                                 nearest_center_id, crossing_items,
-                                                                                 line_data_set, TolDistance, AllowItems)
-                                if remove_flag:
-                                    related_ids[center_id].remove(nearest_center_id)
-                                    break
-    related_ids, between_items = Add_Items_To_Related_Ids(related_ids, crossing_items, between_items, 0)
-    related_ids, line_items = Add_Items_To_Related_Ids(related_ids, crossing_items, line_items, 1)
-    return related_ids, between_items, line_items
+        dist_con_items[center_id] = [[], []]
+    for center_id_i in rr_centers_id:
+        if edges[center_id_i] == 0:  # or edges[center_id_i] == 1
+            con_center_ids_i = connected_ids_dict_1[center_id_i]
+            for center_id_j in con_center_ids_i:
+                if edges[center_id_j] == 0 :
+                    dist_con_items,related_ids,angle_logic = Estimate_Direction_Consistency(centers,angles,connected_ids_dict_1,center_id_i,\
+                                                                                            center_id_j,dist_con_items,related_ids,\
+                                                                                            TolAngle,TolDistance)
+                    if angle_logic:
+                        con_center_ids_i = connected_ids_dict_3[center_id_i]
+                        con_center_ids_j = connected_ids_dict_3[center_id_j]
+                        for between_id in dist_con_items[center_id_i][0]:
+                            if between_id not in con_center_ids_i:
+                                dist_con_items[center_id_i][0].remove(between_id)
+                        line_center_ids = list(set(con_center_ids_j) & set(dist_con_items[center_id_i][1]))
+                        for line_center_id in line_center_ids:
+                            con_center_ids_j_2 = connected_ids_dict_3[line_center_id]
+                            dist_con_items = Estimate_Position_Consistency(centers,center_id_i,center_id_j,\
+                                                           con_center_ids_j_2,dist_con_items,TolDistance)
+                            # dist_con_items = Estimate_Position_Consistency(centers,center_id_j,line_center_id,\
+                            #                                con_center_ids_j_2,dist_con_items,TolDistance)
+                            dist_con_items = Estimate_Position_Consistency_2(centers,center_id_i,center_id_j,line_center_id,\
+                                                           con_center_ids_j_2,dist_con_items,TolDistance)
+
+                            for con_center_id_j_2 in con_center_ids_j_2:
+                                dist_con_items,related_ids,angle_logic = Estimate_Direction_Consistency(centers,angles,\
+                                                                            connected_ids_dict_3,center_id_j,con_center_id_j_2,\
+                                                                            dist_con_items,related_ids,TolAngle,TolDistance)
+    related_ids, between_items = Add_Items_To_Related_Ids(related_ids, dist_con_items, between_items, 0)
+    related_ids, line_items = Add_Items_To_Related_Ids(related_ids, dist_con_items, line_items, 1)
+    return related_ids, dist_con_items
 
 
 def Update_Related_Ids(related_ids):
@@ -239,7 +201,32 @@ def Update_Related_Ids(related_ids):
     for key in related_ids_1.keys():
         if len(related_ids_1[key]) != 0:
             related_ids_2[key] = list(set(related_ids_1[key]))
-    #             related_ids_2[key].remove(key)
     return related_ids_2
+
+    
+def Add_Isolated_Con_Neighbor(related_ids,con_ids_dict_enhanced):
+    related_ids_add_enhanced = copy.deepcopy(related_ids)
+    for key in related_ids.keys():
+        for clump_id in related_ids[key]:
+            connected_ids_enhanced = con_ids_dict_enhanced[clump_id]
+            for connected_id_enhanced in connected_ids_enhanced:
+                if connected_id_enhanced not in related_ids[key]:
+                    add_flag = False
+                    for connected_id_enhanced_2 in con_ids_dict_enhanced[connected_id_enhanced]:
+                        if connected_id_enhanced_2 not in related_ids[key]:
+                            add_flag = False
+                            break
+                        else:
+                            add_flag = True
+                    if add_flag:
+                        related_ids_add_enhanced[key] += [connected_id_enhanced]
+    for i in range(len(related_ids_add_enhanced)):
+        len_0 = len(related_ids_add_enhanced)
+        related_ids_add_enhanced = Update_Related_Ids(related_ids_add_enhanced)
+        len_1 = len(related_ids_add_enhanced)
+        if len_0 == len_1:
+            break
+    return related_ids_add_enhanced
+
 
 
