@@ -5,6 +5,7 @@ from astropy.table import Table
 from skimage import measure, morphology
 from scipy import optimize
 import copy
+import copy
 from tqdm import tqdm
 
 import FacetClumps

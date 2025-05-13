@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from astropy import units as u
 from skimage import measure
+from skimage import measure
 import copy
 
 from . import Filament_Class_Funs_Analysis as FCFA
