@@ -1,8 +1,9 @@
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.colors as colors
+import matplotlib.colors as mcolors
 from astropy import units as u
+from skimage import measure
 import copy
 
 from . import Filament_Class_Funs_Analysis as FCFA
@@ -33,7 +34,7 @@ def Plot_Origin_Data(clumpsObj, figsize=(8, 6), fontsize=12, spacing=12 * u.arcm
     plt.show()
 
 
-def Plot_Clumps_Infor(clumpsObj, figsize=(8, 6), line_scale=3, save_path=None):
+def Plot_Clumps_Infor(clumpsObj, add_text=False, figsize=(8, 6), line_scale=3, save_path=None):
     centers = clumpsObj.centers
     angles = clumpsObj.angles
     edges = clumpsObj.edges
@@ -54,7 +55,8 @@ def Plot_Clumps_Infor(clumpsObj, figsize=(8, 6), line_scale=3, save_path=None):
             lines = plt.plot([cen_y1, center_y, cen_y2], [cen_x1, center_x, cen_x2])
             plt.setp(lines[0], linewidth=2, color='red', marker='.', markersize=3)
         ax0.plot(center_y, center_x, 'r*', markersize=6)
-    #         ax0.text(center_y,center_x,"{}".format(index),color='r',fontsize=10)
+        if add_text:
+            ax0.text(center_y,center_x,"{}".format(index),color='r',fontsize=10)
     ax0.imshow(clumps_data.sum(0),
                origin='lower',
                cmap='gray',
@@ -67,6 +69,60 @@ def Plot_Clumps_Infor(clumpsObj, figsize=(8, 6), line_scale=3, save_path=None):
     if save_path != None:
         plt.savefig(save_path, format='pdf', dpi=1000)
     plt.show()
+
+
+def Plot_Clumps_Infor_By_Ids(clumpsObj,clump_ids,figsize=(16,14),fontsize=14,line_scale=3,save_path=None):
+    clump_angles = clumpsObj.angles
+    clump_edges = clumpsObj.edges
+    clump_centers = clumpsObj.centers
+    clump_centers_wcs = clumpsObj.centers_wcs
+    origin_data = clumpsObj.origin_data
+    regions_data = clumpsObj.regions_data
+    data_wcs = clumpsObj.data_wcs
+    connected_ids_dict = clumpsObj.connected_ids_dict
+    clump_coords_dict = clumpsObj.clump_coords_dict
+    
+    filament_coords, filament_item, data_wcs_item, regions_data_T, start_coords, \
+                 filament_item_mask_2D, lb_area = FCFA.Filament_Coords(origin_data, \
+                 regions_data, data_wcs, clump_coords_dict, clump_ids, CalSub=False)
+
+    fig = plt.figure(figsize=figsize)
+    ax0 = fig.add_subplot(111,projection=data_wcs_item.celestial)
+    for index in clump_ids:
+        center_x = clump_centers[index][1]-start_coords[1]
+        center_y = clump_centers[index][2]-start_coords[2]
+        cen_x1 = center_x + line_scale*np.sin(np.deg2rad(clump_angles[index]))
+        cen_y1 = center_y + line_scale*np.cos(np.deg2rad(clump_angles[index]))
+        cen_x2 = center_x - line_scale*np.sin(np.deg2rad(clump_angles[index]))
+        cen_y2 = center_y - line_scale*np.cos(np.deg2rad(clump_angles[index]))
+        if clump_edges[index] == 0:
+            lines = plt.plot([cen_y1,center_y,cen_y2],[cen_x1,center_x,cen_x2])
+            plt.setp(lines[0], linewidth=2,color = 'red',marker='.',markersize=3)
+        ax0.plot(center_y,center_x,'r*',markersize = 6)
+        ax0.text(center_y,center_x,"{}".format(index),color='r',fontsize=10)
+    ax0.imshow(filament_item.sum(0),
+               origin='lower',
+               cmap='gray',
+               interpolation='none')
+    ax0.contourf(filament_item.sum(0),
+                 levels = [0., .1],
+                 colors = 'w')
+    plt.rcParams['xtick.direction'] = 'in'
+    plt.rcParams['ytick.direction'] = 'in'
+    plt.rcParams['xtick.color'] = 'green'
+    plt.rcParams['ytick.color'] = 'green'
+    plt.xlabel("Galactic Longitude",fontsize=fontsize)
+    plt.ylabel("Galactic Latitude",fontsize=fontsize)
+    lon = ax0.coords[0]
+    lat = ax0.coords[1]
+    lon.set_major_formatter("d.d")
+    lat.set_major_formatter("d.d")
+#     fig.tight_layout()
+#     plt.xticks([]),plt.yticks([])
+    if save_path!=None:
+        plt.savefig(save_path, format='pdf', dpi=1000)
+    plt.show()
+    return filament_item
 
 
 def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.arcmin, save_path=None):
@@ -112,15 +168,15 @@ def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.
                origin='lower',
                cmap='gray',
                interpolation='none',
-               norm=colors.Normalize(vmin=vmin, vmax=vmax))
+               norm=mcolors.Normalize(vmin=vmin, vmax=vmax))
     ax0.contourf(filament_item.sum(0),
                  levels=[0., .01],
                  colors='w')
 
     plt.rcParams['xtick.direction'] = 'in'
     plt.rcParams['ytick.direction'] = 'in'
-    plt.rcParams['xtick.color'] = 'red'
-    plt.rcParams['ytick.color'] = 'red'
+    plt.rcParams['xtick.color'] = 'green'
+    plt.rcParams['ytick.color'] = 'green'
     plt.xlabel("Galactic Longitude", fontsize=fontsize)
     plt.ylabel("Galactic Latitude", fontsize=fontsize)
     lon = ax0.coords[0]
@@ -138,50 +194,61 @@ def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.
              format(np.around(filament_angle, 2)), color='black', fontsize=fontsize)
     ax0.text(xmin_coord, ymax_coord - filament_item_shape[1] / 8, r'LWRatio={}'. \
              format(np.around(filament_ratio, 2)), color='black', fontsize=fontsize)
-    #     ax0.set_title('Filament Item Image',fontsize=14,color='b')
-    #     fig.tight_layout()
-    #     plt.xticks([]),plt.yticks([])
+    # fig.tight_layout()
+    # plt.xticks([]),plt.yticks([])
     if save_path != None:
-        sava_name = save_path + '_l{}_b{}_v{}.png'. \
-            format(filament_com_wcs[0], filament_com_wcs[1], filament_com_wcs[2])
-        plt.savefig(sava_name)
+        plt.savefig(save_path, format='pdf', dpi=1000)
     plt.show()
 
 
-def Plot_Filament(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.arcmin, save_path=None):
+def Plot_Filament(filamentObj,figsize=(8, 6),colors=None,background='fils_data',cmap='gray',fontsize=12,spacing=12*u.arcmin,save_path=None):
     data_wcs = filamentObj.clumpsObj.data_wcs
     origin_data = filamentObj.clumpsObj.origin_data
-    # regions_data = filamentObj.clumpsObj.regions_data
+    regions_data = filamentObj.clumpsObj.regions_data
     filament_regions_data = filamentObj.filament_regions_data
-    filaments_data = np.zeros_like(origin_data)
-    filaments_data[filament_regions_data > 0] = origin_data[filament_regions_data > 0]
     dictionary_cuts = filamentObj.dictionary_cuts
+    substructure_num = filamentObj.substructure_num
+    fil_num = filament_regions_data[filament_regions_data > 0].max()
 
-    fig = plt.figure(figsize=(8, 6))
+    fig = plt.figure(figsize=figsize)
     ax0 = fig.add_subplot(111, projection=data_wcs.celestial)
-    #     for cut_line_id in range(len(dictionary_cuts['plot_cuts'])):
-    #         start = dictionary_cuts['plot_cuts'][cut_line_id][0]
-    #         end = dictionary_cuts['plot_cuts'][cut_line_id][1]
-    #         ax0.plot([start[0], end[0]], [start[1], end[1]], 'r-', markersize = 8.,linewidth = 1.,alpha=1)
-    for points in dictionary_cuts['points']:
-        ax0.plot(points[:, 0], points[:, 1], 'r', label='fit', lw=3, alpha=1.0, markersize=8.)
-    #     ax0.plot(np.asarray(dictionary_cuts['plot_peaks'])[:, 0].astype(int),
-    #              np.asarray(dictionary_cuts['plot_peaks'])[:, 1].astype(int),
-    #              'b.', markersize = 8.,alpha=0.75, markeredgecolor='white',markeredgewidth=0.5)
-    vmin = np.min(filaments_data.sum(0)[np.where(filaments_data.sum(0) != 0)])
-    vmax = np.nanpercentile(filaments_data.sum(0)[np.where(filaments_data.sum(0) != 0)], 98.)
-    ax0.imshow(filaments_data.sum(0),
+    used_id_len = 0
+    color_id = 0
+    if colors == None:
+        colors = plt.cm.Spectral(np.linspace(0, 1, fil_num))
+    elif isinstance(colors, str):
+        colors = [colors]*fil_num
+    else:
+        print('Wrong colors!')
+    for sub_sk_len in substructure_num:
+        for i in range(sub_sk_len):
+            if used_id_len+i < len(dictionary_cuts['points']):
+                points = dictionary_cuts['points'][used_id_len+i]
+                ax0.plot(points[:, 0], points[:, 1], color=colors[color_id],label='fit',lw=3, alpha=1.0, markersize=8.)
+            else:
+                break
+        used_id_len += sub_sk_len 
+        color_id += 1
+
+    if background == 'fils_data':
+        filaments_data = origin_data * (filament_regions_data>0)
+        background_data = filaments_data
+    elif background == 'clumps_data':
+        background_data = origin_data * (regions_data>0)
+    vmin = np.min(background_data.sum(0)[np.where(background_data.sum(0) != 0)])
+    vmax = np.nanpercentile(background_data.sum(0)[np.where(background_data.sum(0) != 0)], 98.)
+    ax0.imshow(background_data.sum(0),
                origin='lower',
-               cmap='gray',
+               cmap=cmap,
                interpolation='none',
-               norm=colors.Normalize(vmin=vmin, vmax=vmax))
-    ax0.contourf(filaments_data.sum(0),
+               norm=mcolors.Normalize(vmin=vmin, vmax=vmax))
+    ax0.contourf(background_data.sum(0),
                  levels=[0., .01],
                  colors='w')
     plt.rcParams['xtick.direction'] = 'in'
     plt.rcParams['ytick.direction'] = 'in'
-    plt.rcParams['xtick.color'] = 'red'
-    plt.rcParams['ytick.color'] = 'red'
+    plt.rcParams['xtick.color'] = 'green'
+    plt.rcParams['ytick.color'] = 'green'
     plt.xlabel("Galactic Longitude", fontsize=fontsize)
     plt.ylabel("Galactic Latitude", fontsize=fontsize)
     lon = ax0.coords[0]
@@ -189,13 +256,8 @@ def Plot_Filament(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.arcmi
     lon.set_major_formatter("d.d")
     lat.set_major_formatter("d.d")
     lon.set_ticks(spacing=spacing)
-
     if save_path != None:
-        #         filament_data_shape = filaments_data.shape
-        #         ax0.text(filament_data_shape[2]/20,filament_data_shape[1]-filament_data_shape[1]/15,'{}'.\
-        #          format(save_path.split('/')[-1].split('_')[0]),color='black',fontsize=fontsize)
-        sava_name = save_path
-        plt.savefig(sava_name)
+        plt.savefig(save_path, format='pdf', dpi=1000)
     plt.show()
 
 
@@ -318,7 +380,7 @@ def Plot_PV_Integrate(filamentObj, figsize=(10, 8), fontsize=12, spacing=[0.2, 0
     # ax0.invert_yaxis()
     # ax1.invert_yaxis()
     if save_path != None:
-        plt.savefig(save_path)
+        plt.savefig(save_path, format='pdf', dpi=1000)
     plt.show()
 
 
@@ -417,7 +479,7 @@ def Plot_Clumps_Velocity(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * 
                      origin='lower',
                      cmap='gray',
                      interpolation='none',
-                     norm=colors.Normalize(vmin=vmin, vmax=vmax))
+                     norm=mcolors.Normalize(vmin=vmin, vmax=vmax))
     ax0.contourf(filaments_data.sum(0),
                  levels=[0., .01],
                  colors='w')
@@ -434,6 +496,103 @@ def Plot_Clumps_Velocity(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * 
         filament_data_shape = filaments_data.shape
         #         ax0.text(filament_data_shape[2]/20,filament_data_shape[1]-filament_data_shape[1]/15,'{}'.\
         #          format(save_path.split('/')[-1].split('_')[0]),color='black',fontsize=fontsize)
-        sava_name = save_path
-        plt.savefig(sava_name, format='pdf', bbox_inches='tight', dpi=1200)
+        plt.savefig(save_path, format='pdf', bbox_inches='tight', dpi=1200)
     plt.show()
+
+
+def Get_Item_Infor_By_Coords(origin_data, item_coords, data_wcs):
+    x_min = np.array(item_coords[:, 0]).min()
+    x_max = np.array(item_coords[:, 0]).max()
+    y_min = np.array(item_coords[:, 1]).min()
+    y_max = np.array(item_coords[:, 1]).max()
+    z_min = np.array(item_coords[:, 2]).min()
+    z_max = np.array(item_coords[:, 2]).max()
+    length = np.max([x_max - x_min, y_max - y_min, z_max - z_min])
+    if np.int32(length * 0.1) % 2 == 0:
+        length += np.int32(length * 0.1) + 5
+    else:
+        length += np.int32(length * 0.1) + 6
+    cube_item = np.zeros([length, length, length])
+    start_x = np.int64((length - (x_max - x_min)) / 2)
+    start_y = np.int64((length - (y_max - y_min)) / 2)
+    start_z = np.int64((length - (z_max - z_min)) / 2)
+    cube_item[item_coords[:, 0] - x_min + start_x, item_coords[:, 1] - y_min + start_y, \
+                  item_coords[:, 2] - z_min + start_z] = \
+        origin_data[item_coords[:, 0], item_coords[:, 1], item_coords[:, 2]]
+    start_coords = np.array([x_min - start_x, y_min - start_y, z_min - start_z])
+
+    data_wcs_item = data_wcs.deepcopy()
+    data_wcs_item.wcs.crpix[0] -= start_coords[2]
+    data_wcs_item.wcs.crpix[1] -= start_coords[1]
+    data_wcs_item.wcs.crpix[2] -= start_coords[0]
+    return cube_item, data_wcs_item, start_coords
+
+def Get_SR_Of_Fil(filamentObj,filament_clumps_id,sr_coords_dict, srs_array):
+    filament_coords = filamentObj.filament_coords
+    origin_data = filamentObj.clumpsObj.origin_data
+    data_wcs = filamentObj.clumpsObj.data_wcs
+    signal_region_id = srs_array[filament_coords[0][0],filament_coords[0][1],filament_coords[0][2]]-1
+    signal_coords = sr_coords_dict[signal_region_id]
+    sr_item,data_wcs_item,start_coords = Get_Item_Infor_By_Coords(origin_data,signal_coords,data_wcs)
+    return sr_item,data_wcs_item,start_coords
+
+def Plot_SR_And_Fil(filamentObj,filament_clumps_id,figsize=(8, 6),fontsize=12,spacing=12*u.arcmin,save_path=None):
+    clump_centers = filamentObj.clumpsObj.centers
+    clump_angles = filamentObj.clumpsObj.angles
+    filament_coords = filamentObj.filament_coords
+    srs_array = filamentObj.clumpsObj.signal_regions_array
+    srs_list = filamentObj.clumpsObj.signal_regions_list
+    sr_coords_dict = filamentObj.clumpsObj.sr_coords_dict
+    signal_region_item,data_wcs_item,start_coords = Get_SR_Of_Fil(filamentObj,filament_clumps_id,sr_coords_dict,srs_array)
+    
+    fig = plt.figure(figsize=figsize)
+    ax0 = fig.add_subplot(111, projection=data_wcs_item.celestial)
+    
+    line_scale = 3
+    for index in filament_clumps_id:
+        center_x = clump_centers[index][1]-start_coords[1]
+        center_y = clump_centers[index][2]-start_coords[2]
+        cen_x1 = center_x + line_scale * np.sin(np.deg2rad(clump_angles[index]))
+        cen_y1 = center_y + line_scale * np.cos(np.deg2rad(clump_angles[index]))
+        cen_x2 = center_x - line_scale * np.sin(np.deg2rad(clump_angles[index]))
+        cen_y2 = center_y - line_scale * np.cos(np.deg2rad(clump_angles[index]))
+        lines = plt.plot([cen_y1, center_y, cen_y2], [cen_x1, center_x, cen_x2])
+        plt.setp(lines[0], linewidth=2, color='red', marker='.', markersize=3)
+        ax0.plot(center_y, center_x, 'r*', markersize=6)
+    
+    color_i = 'green'
+    contour_data = np.zeros_like(signal_region_item.sum(0))
+    contour_coords = filament_coords - start_coords
+    contour_data[contour_coords[:,1],contour_coords[:,2]] = 1   
+    contour_data[np.where(contour_data!=0)] = 1
+    contour = measure.find_contours(contour_data,0.5)
+    ax0.plot(contour[0][:,1],contour[0][:,0],linewidth=2,color=color_i)
+    
+    
+    vmin = np.min(signal_region_item.sum(0)[np.where(signal_region_item.sum(0) != 0)])
+    vmax = np.nanpercentile(signal_region_item.sum(0)[np.where(signal_region_item.sum(0) != 0)], 98.)
+    ax0.imshow(signal_region_item.sum(0),
+               origin='lower',
+               cmap='gray',
+               interpolation='none',
+               norm=mcolors.Normalize(vmin=vmin, vmax=vmax))
+    ax0.contourf(signal_region_item.sum(0),
+                 levels=[0., .01],
+                 colors='w')
+    
+    plt.rcParams['xtick.direction'] = 'in'
+    plt.rcParams['ytick.direction'] = 'in'
+    plt.rcParams['xtick.color'] = 'green'
+    plt.rcParams['ytick.color'] = 'green'
+    plt.xlabel("Galactic Longitude", fontsize=fontsize)
+    plt.ylabel("Galactic Latitude", fontsize=fontsize)
+    lon = ax0.coords[0]
+    lat = ax0.coords[1]
+    lon.set_major_formatter("d.d")
+    lat.set_major_formatter("d.d")
+    if spacing != None:
+        lon.set_ticks(spacing=spacing)
+    if save_path != None:
+        plt.savefig(save_path, format='pdf', dpi=1000)
+    plt.show()
+
