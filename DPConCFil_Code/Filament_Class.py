@@ -386,7 +386,7 @@ class FilamentInfor(object):
         
         # Recursively find maximum paths through the graph
         max_path_record, max_edges_record = FCFA.Get_Max_Path_Recursion(origin_data, filament_centers_LBV, \
-                                                                        max_path_record, max_edges_record, Graph, Tree)
+                                                                        max_path_record, max_edges_record, Graph, Tree, Tree)
         max_path_record = FCFA.Update_Max_Path_Record(max_path_record)
 
         # Initialize variables for substructure analysis

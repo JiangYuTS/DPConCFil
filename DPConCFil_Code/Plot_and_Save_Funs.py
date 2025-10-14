@@ -19,23 +19,27 @@ def Plot_Origin_Data(clumpsObj, figsize=(8, 6), fontsize=12, spacing=12 * u.arcm
     plt.rcParams['ytick.color'] = 'green'
     plt.xlabel("Galactic Longitude", fontsize=fontsize)
     plt.ylabel("Galactic Latitude", fontsize=fontsize)
+    ax0.coords[0].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+    ax0.coords[1].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+    ax0.tick_params(axis='both', which='major', labelsize=fontsize)
 
     lon = ax0.coords[0]
     lat = ax0.coords[1]
     lon.set_major_formatter("d.d")
     lat.set_major_formatter("d.d")
     lon.set_ticks(spacing=spacing)
+    lat.set_ticks(spacing=spacing)
 
     gci = plt.imshow(clumpsObj.origin_data.sum(axis=0) * clumpsObj.delta_v, cmap='gray')
     cbar = plt.colorbar(gci, pad=0)
     cbar.set_label('K km s$^{-1}$', fontsize=fontsize, color='black')
-    cbar.ax.tick_params(axis='y', colors='black')
+    cbar.ax.tick_params(axis='y', colors='black', labelsize=fontsize)
     if save_path != None:
         plt.savefig(save_path, format='pdf', dpi=1000)
-    plt.show()
+    return ax0
 
 
-def Plot_Clumps_Infor(clumpsObj, add_text=False, figsize=(8, 6), line_scale=3, save_path=None):
+def Plot_Clumps_Infor(clumpsObj,figsize=(8, 6),line_scale=3,num_text=True,save_path=None):
     centers = clumpsObj.centers
     angles = clumpsObj.angles
     edges = clumpsObj.edges
@@ -56,7 +60,7 @@ def Plot_Clumps_Infor(clumpsObj, add_text=False, figsize=(8, 6), line_scale=3, s
             lines = plt.plot([cen_y1, center_y, cen_y2], [cen_x1, center_x, cen_x2])
             plt.setp(lines[0], linewidth=2, color='red', marker='.', markersize=3)
         ax0.plot(center_y, center_x, 'r*', markersize=6)
-        if add_text:
+        if num_text==True:
             ax0.text(center_y,center_x,"{}".format(index),color='r',fontsize=10)
     ax0.imshow(clumps_data.sum(0),
                origin='lower',
@@ -69,7 +73,7 @@ def Plot_Clumps_Infor(clumpsObj, add_text=False, figsize=(8, 6), line_scale=3, s
     plt.xticks([]), plt.yticks([])
     if save_path != None:
         plt.savefig(save_path, format='pdf', dpi=1000)
-    plt.show()
+    return ax0
 
 
 def Plot_Clumps_Infor_By_Ids(clumpsObj,clump_ids,figsize=(16,14),fontsize=14,line_scale=3,save_path=None):
@@ -112,8 +116,9 @@ def Plot_Clumps_Infor_By_Ids(clumpsObj,clump_ids,figsize=(16,14),fontsize=14,lin
     plt.rcParams['ytick.direction'] = 'in'
     plt.rcParams['xtick.color'] = 'green'
     plt.rcParams['ytick.color'] = 'green'
-    plt.xlabel("Galactic Longitude",fontsize=fontsize)
-    plt.ylabel("Galactic Latitude",fontsize=fontsize)
+    ax0.coords[0].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+    ax0.coords[1].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+    ax0.tick_params(axis='both', which='major', labelsize=fontsize)
     lon = ax0.coords[0]
     lat = ax0.coords[1]
     lon.set_major_formatter("d.d")
@@ -122,7 +127,6 @@ def Plot_Clumps_Infor_By_Ids(clumpsObj,clump_ids,figsize=(16,14),fontsize=14,lin
 #     plt.xticks([]),plt.yticks([])
     if save_path!=None:
         plt.savefig(save_path, format='pdf', dpi=1000)
-    plt.show()
     return filament_item
 
 
@@ -180,12 +184,16 @@ def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.
     plt.rcParams['ytick.color'] = 'green'
     plt.xlabel("Galactic Longitude", fontsize=fontsize)
     plt.ylabel("Galactic Latitude", fontsize=fontsize)
+    ax0.coords[0].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+    ax0.coords[1].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+    ax0.tick_params(axis='both', which='major', labelsize=fontsize)
     lon = ax0.coords[0]
     lat = ax0.coords[1]
     lon.set_major_formatter("d.d")
     lat.set_major_formatter("d.d")
     if spacing != None:
         lon.set_ticks(spacing=spacing)
+        lat.set_ticks(spacing=spacing)
 
     xmin_coord = filament_item.shape[2] / 30
     ymax_coord = filament_item.shape[1] / 1.08
@@ -199,7 +207,7 @@ def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.
     # plt.xticks([]),plt.yticks([])
     if save_path != None:
         plt.savefig(save_path, format='pdf', dpi=1000)
-    plt.show()
+    return ax0
 
 
 def Plot_Filament(filamentObj,figsize=(8, 6),colors=None,background='fils_data',cmap='gray',fontsize=12,spacing=12*u.arcmin,save_path=None):
@@ -252,11 +260,15 @@ def Plot_Filament(filamentObj,figsize=(8, 6),colors=None,background='fils_data',
     plt.rcParams['ytick.color'] = 'green'
     plt.xlabel("Galactic Longitude", fontsize=fontsize)
     plt.ylabel("Galactic Latitude", fontsize=fontsize)
+    ax0.coords[0].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+    ax0.coords[1].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+    ax0.tick_params(axis='both', which='major', labelsize=fontsize)
     lon = ax0.coords[0]
     lat = ax0.coords[1]
     lon.set_major_formatter("d.d")
     lat.set_major_formatter("d.d")
     lon.set_ticks(spacing=spacing)
+    lat.set_ticks(spacing=spacing)
     if save_path != None:
         plt.savefig(save_path, format='pdf', dpi=1000)
     plt.show()
@@ -412,6 +424,9 @@ def Plot_Filament_Profile(filamentObj, figsize=(8, 6), fontsize=16, xlims=(-30, 
     plt.xlabel("Radial Distance (Pix)", fontsize=fontsize)
     plt.ylabel(r"Integrated Intensity (K)", fontsize=fontsize)
     plt.tick_params(axis='both', which='major', labelsize=fontsize)
+    ax0.coords[0].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+    ax0.coords[1].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+    ax0.tick_params(axis='both', which='major', labelsize=fontsize)
 
     if save_path != None:
         plt.savefig(save_path, format='pdf', dpi=1000)
@@ -587,12 +602,16 @@ def Plot_SR_And_Fil(filamentObj,filament_clumps_id,figsize=(8, 6),fontsize=12,sp
     plt.rcParams['ytick.color'] = 'green'
     plt.xlabel("Galactic Longitude", fontsize=fontsize)
     plt.ylabel("Galactic Latitude", fontsize=fontsize)
+    ax0.coords[0].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+    ax0.coords[1].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+    ax0.tick_params(axis='both', which='major', labelsize=fontsize)
     lon = ax0.coords[0]
     lat = ax0.coords[1]
     lon.set_major_formatter("d.d")
     lat.set_major_formatter("d.d")
     if spacing != None:
         lon.set_ticks(spacing=spacing)
+        lat.set_ticks(spacing=spacing)
     if save_path != None:
         plt.savefig(save_path, format='pdf', dpi=1000)
     plt.show()

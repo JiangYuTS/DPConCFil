@@ -345,9 +345,9 @@ class FilamentInfor(object):
                 end_2 = time.ctime()
                 delta_time = np.around(end_1 - start_1, 2)
                 par_time_record = np.hstack(
-                    [[self.TolAngle, self.TolDistanc, self.LWRatio, start_2, end_2, delta_time]])
+                    [[self.TolAngle, self.TolDistance, self.LWRatio, start_2, end_2, delta_time]])
                 par_time_record = Table(par_time_record,
-                                        names=['TolAngle', 'TolDistanc', 'LWRatio', 'Start', 'End', 'DTime'])
+                                        names=['TolAngle', 'TolDistance', 'LWRatio', 'Start', 'End', 'DTime'])
                 par_time_record.write(filament_table_pix_name[:-4] + '_DPConCFil_record.csv', overwrite=True)
                 self.delta_time = delta_time
                 print('Number:', len(coms_vbl))

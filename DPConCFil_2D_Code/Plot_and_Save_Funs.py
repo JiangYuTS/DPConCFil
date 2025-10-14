@@ -31,13 +31,14 @@ def Plot_Origin_Data(clumpsObj,figsize=(8,6),fontsize=12,spacing=12*u.arcmin,sav
         plt.savefig(save_path, format='pdf', dpi=1000)
     plt.show()
 
-def Plot_Clumps_Infor(clumpsObj,figsize=(8,6),line_scale=3,save_path=None):
+def Plot_Clumps_Infor(clumpsObj,figsize=(8,6),text_num=False,line_scale=3,save_path=None):
     centers = clumpsObj.centers
     angles = clumpsObj.angles
     edges = clumpsObj.edges
     clumps_data = np.zeros_like(clumpsObj.origin_data)
     for i in range(len(clumpsObj.clump_coords_dict)):
-        clumps_data[clumpsObj.clump_coords_dict[i]] = clumpsObj.origin_data[clumpsObj.clump_coords_dict[i]]
+        clumps_data[clumpsObj.clump_coords_dict[i][:,0],clumpsObj.clump_coords_dict[i][:,1]] = \
+             clumpsObj.origin_data[clumpsObj.clump_coords_dict[i][:,0],clumpsObj.clump_coords_dict[i][:,1]]
         
     fig,(ax0)= plt.subplots(1,1, figsize=figsize)
     for index in range(len(centers)):
@@ -51,7 +52,8 @@ def Plot_Clumps_Infor(clumpsObj,figsize=(8,6),line_scale=3,save_path=None):
             lines = plt.plot([cen_y1,center_y,cen_y2],[cen_x1,center_x,cen_x2])
             plt.setp(lines[0], linewidth=2,color = 'red',marker='.',markersize=3)
         ax0.plot(center_y,center_x,'r*',markersize = 6)
-#         ax0.text(center_y,center_x,"{}".format(index),color='r',fontsize=10)
+        if text_num:
+            ax0.text(center_y,center_x,"{}".format(index),color='r',fontsize=10)
 
         clump_item = np.zeros_like(clumpsObj.origin_data)
         clump_coords = (clumpsObj.clump_coords_dict[index][:,0],clumpsObj.clump_coords_dict[index][:,1])
@@ -76,7 +78,6 @@ def Plot_Clumps_Infor(clumpsObj,figsize=(8,6),line_scale=3,save_path=None):
     if save_path!=None:
         plt.savefig(save_path, format='pdf', dpi=1000)
     plt.show()
-
     
     
 def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.arcmin, save_path=None):

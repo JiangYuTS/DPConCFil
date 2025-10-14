@@ -2,9 +2,10 @@ import time
 import numpy as np
 from skimage import measure,morphology
 import scipy.ndimage as ndimage
-from collections import defaultdict
+from collections import defaultdict,deque
 from scipy.interpolate import splprep, splev,RegularGridInterpolator
 import networkx as nx
+from scipy.spatial.distance import cdist
 
 def Filament_Coords(origin_data, regions_data, data_wcs, clump_coords_dict, related_ids_T, CalSub=False):
     filament_coords = clump_coords_dict[related_ids_T[0]]
@@ -92,20 +93,28 @@ def Graph_Infor_SubStructure(origin_data,filament_mask_2D,filament_centers_LBV,f
     return Graph,Tree
 
 
-def Get_Max_Path_Weight_SubStructure(origin_data,filament_centers_LBV,T):
+def Get_Max_Path_Weight_SubStructure(origin_data,filament_centers_LBV,T,Tree_0,sub_tree):
     #Weight
     points_LB = np.c_[filament_centers_LBV[:,0],filament_centers_LBV[:,1]]
     dist_matrix = Dists_Array(points_LB, points_LB)
     filament_centers_LBV = np.int64(np.around(filament_centers_LBV))
-    
+
     degree1_nodes = [node for node in T.nodes if T.degree(node) == 1] 
+    common_nodes = set(T.nodes()) & set(Tree_0.nodes()) 
+    common_degrees_in_Tree0 = {node: Tree_0.degree(node) for node in common_nodes}
+    max_degree = max(common_degrees_in_Tree0.values()) 
+    max_degree_nodes = [node for node, deg in common_degrees_in_Tree0.items() if deg == max_degree]
+
+    if not sub_tree:
+        max_degree_nodes = degree1_nodes
+        
     paths_and_weights = []
     max_path = []
     max_edges = []
-    for i in range(len(degree1_nodes)-1):
-        for j in range(i+1, len(degree1_nodes)):
-            if nx.has_path(T, degree1_nodes[i], degree1_nodes[j]):
-                path = nx.shortest_path(T, degree1_nodes[i], degree1_nodes[j]) 
+    for i in range(len(degree1_nodes)):
+        for j in range(len(max_degree_nodes)):
+            if nx.has_path(T, degree1_nodes[i], max_degree_nodes[j]):
+                path = nx.shortest_path(T, degree1_nodes[i], max_degree_nodes[j]) 
                 path_weight = 0
                 for k in range(len(path)-1):
                     line_coords = Get_Line_Coords_2D(filament_centers_LBV[path[k]],filament_centers_LBV[path[k+1]])
@@ -119,70 +128,257 @@ def Get_Max_Path_Weight_SubStructure(origin_data,filament_centers_LBV,T):
     return max_path,max_edges
 
 
-def Trim_Skeleton_Coords_2D(skeleton_coords_2D,fil_mask,CalSubSK=False,SmallSkeleton=6):
-    id_item = 1
-    skeleton_coords_2D_len = 3
-    fil_mask_shape = fil_mask.shape
-    xres = fil_mask_shape[0]
-    yres = fil_mask_shape[1]
-    while id_item < skeleton_coords_2D_len-1:
-        x_center = skeleton_coords_2D[id_item][0]
-        y_center = skeleton_coords_2D[id_item][1]
-        x_arange = np.arange(max(0,x_center-1),min(xres,x_center+2))
-        y_arange = np.arange(max(0,y_center-1),min(yres,y_center+2))
-        [x, y] = np.meshgrid(x_arange, y_arange)
-        neighbor_coords = np.column_stack([x.flat, y.flat])
-        in_neighbor_number = 0 
-        for skeleton_coord in skeleton_coords_2D[id_item-1:id_item+3]:
-            if tuple(skeleton_coord) in list(map(tuple, neighbor_coords)):
-                in_neighbor_number += 1
-        #3*3
-        remove_number = 0
-        for id_item_T in range(id_item+3,skeleton_coords_2D_len-2):
-            id_item_TT = id_item_T - remove_number
-            if tuple(skeleton_coords_2D[id_item_TT]) in list(map(tuple, neighbor_coords)):
-                remove_number += 1
-                skeleton_coords_2D = np.r_[skeleton_coords_2D[:id_item_TT],skeleton_coords_2D[id_item_TT+1:]]
-        if in_neighbor_number == 4:
-            skeleton_coords_2D = np.r_[skeleton_coords_2D[:id_item+1],skeleton_coords_2D[id_item+2:]]
-        id_item += 1
-        skeleton_coords_2D_len = len(skeleton_coords_2D)
-    #5*5
-#     id_item = 1
-#     while id_item < skeleton_coords_2D_len-1:
-#         x_center = skeleton_coords_2D[id_item][0]
-#         y_center = skeleton_coords_2D[id_item][1]
-#         x_arange = np.arange(max(0,x_center-2),min(xres,x_center+3))
-#         y_arange = np.arange(max(0,y_center-2),min(yres,y_center+3))
-#         [x, y] = np.meshgrid(x_arange, y_arange)
-#         neighbor_coords = np.column_stack([x.flat, y.flat])
-#         remove_number = 0
-#         for id_item_T in range(id_item+4,skeleton_coords_2D_len-2):
-#             id_item_TT = id_item_T - remove_number
-#             if tuple(skeleton_coords_2D[id_item_TT]) in list(map(tuple, neighbor_coords)):
-#                 remove_number += 1
-#                 skeleton_coords_2D = np.r_[skeleton_coords_2D[:id_item_TT],skeleton_coords_2D[id_item_TT+1:]]    
-#         skeleton_coords_2D_len = len(skeleton_coords_2D)
-#         id_item += 1
-    skeleton_mask = np.zeros_like(fil_mask)
-    skeleton_mask[(skeleton_coords_2D[:,0],skeleton_coords_2D[:,1])] = 1   
-    props = measure.regionprops(measure.label(skeleton_mask))
-    lengths = [prop.major_axis_length for prop in props]
-    longest_skeleton_index = lengths.index(max(lengths))
-    skeleton_coords_2D = props[longest_skeleton_index].coords
-    for skeleton_index in range(0,len(props)):
-        if len(props[skeleton_index].coords)>SmallSkeleton*2 and skeleton_index!=longest_skeleton_index:
-            skeleton_coords_2D = np.r_[skeleton_coords_2D,props[skeleton_index].coords]   
-    if len(skeleton_coords_2D)>SmallSkeleton:  
-        small_sc = False
-        if not CalSubSK:
-            skeleton_coords_2D = Extend_Skeleton_Coords(skeleton_coords_2D,fil_mask)
-    else:
-        small_sc = True
-    G_longest_skeleton,T_longest_skeleton = Graph_Infor(skeleton_coords_2D)
-    max_path,max_edges = Get_Max_Path_Node(T_longest_skeleton)
-    skeleton_coords_2D = skeleton_coords_2D[max_path] 
-    return skeleton_coords_2D,small_sc
+def Trim_Skeleton_Coords_2D(skeleton_coords_2D, SmallSkeleton=6):
+    """
+    Trim and clean up skeleton coordinates by removing redundancies and loops.
+    
+    This function removes overlapping or redundant points in the skeleton and
+    ensures it forms a clean, non-branching path through the filament.
+    
+    Parameters:
+    -----------
+    skeleton_coords_2D : ndarray
+        Input skeleton coordinates
+    SmallSkeleton : int
+        Small skeleton threshold
+        
+    Returns:
+    --------
+    coords : ndarray
+        Trimmed skeleton coordinates
+    small_sc : bool
+        Whether skeleton is small
+    """
+    
+    def is_connected(coords):
+        """Robust connectivity check"""
+        if len(coords) < 2:
+            return True
+        distances = cdist(coords, coords)
+        adj = distances <= np.sqrt(2) + 1e-6
+        np.fill_diagonal(adj, False)
+        
+        visited = set([0])
+        queue = deque([0])
+        while queue:
+            current = queue.popleft()
+            for i in np.where(adj[current])[0]:
+                if i not in visited:
+                    visited.add(i)
+                    queue.append(i)
+        return len(visited) == len(coords)
+    
+    def find_main_path_with_priorities(coords):
+        """Find main skeleton path and assign priorities"""
+        if len(coords) < 3:
+            return list(range(len(coords))), np.ones(len(coords))
+        
+        distances = cdist(coords, coords)
+        adj_matrix = distances <= 2 #np.sqrt(2) + 1e-6
+        np.fill_diagonal(adj_matrix, False)
+        
+        # Find endpoints (points with few neighbors)
+        neighbor_counts = np.sum(adj_matrix, axis=1)
+        endpoints = np.where(neighbor_counts <= 2)[0]
+        
+        if len(endpoints) < 2:
+            # Use furthest apart points as endpoints
+            max_dist = 0
+            start_idx, end_idx = 0, len(coords)-1
+            for i in range(len(coords)):
+                for j in range(i+1, len(coords)):
+                    if distances[i, j] > max_dist:
+                        max_dist = distances[i, j]
+                        start_idx, end_idx = i, j
+        else:
+            start_idx, end_idx = endpoints[0], endpoints[-1]
+        
+        # Build path from start to end
+        path = [start_idx]
+        current = start_idx
+        visited = {start_idx}
+        
+        while current != end_idx and len(path) < len(coords):
+            neighbors = np.where(adj_matrix[current])[0]
+            unvisited_neighbors = [n for n in neighbors if n not in visited]
+            
+            if not unvisited_neighbors:
+                break
+                
+            # Choose neighbor closest to end point
+            best_neighbor = min(unvisited_neighbors, 
+                              key=lambda n: distances[n, end_idx])
+            path.append(best_neighbor)
+            visited.add(best_neighbor)
+            current = best_neighbor
+        
+        # Assign priority scores (main path gets higher scores)
+        priorities = np.zeros(len(coords))
+        for i, idx in enumerate(path):
+            priorities[idx] = len(path) - i + 10  # Boost main path points
+        
+        # Give remaining points lower priority based on connectivity
+        for i in range(len(coords)):
+            if priorities[i] == 0:
+                priorities[i] = neighbor_counts[i]
+        
+        return path, priorities
+    
+    def get_box_neighbors(center_coord, coords, box_size):
+        """Get neighbors within box"""
+        half = box_size // 2
+        neighbors = []
+        for i, coord in enumerate(coords):
+            if (abs(coord[0] - center_coord[0]) <= half and 
+                abs(coord[1] - center_coord[1]) <= half):
+                neighbors.append(i)
+        return neighbors
+    
+    def find_best_bridge_points(current_coords, original_coords):
+        """Find optimal bridge points for reconnection"""
+        if is_connected(current_coords):
+            return []
+        
+        # Find disconnected components
+        distances = cdist(current_coords, current_coords)
+        adj = distances <= np.sqrt(2) + 1e-6
+        np.fill_diagonal(adj, False)
+        
+        visited = set()
+        components = []
+        for i in range(len(current_coords)):
+            if i not in visited:
+                component = []
+                stack = [i]
+                while stack:
+                    current = stack.pop()
+                    if current not in visited:
+                        visited.add(current)
+                        component.append(current)
+                        neighbors = np.where(adj[current])[0]
+                        for neighbor in neighbors:
+                            if neighbor not in visited:
+                                stack.append(neighbor)
+                components.append(component)
+        
+        if len(components) <= 1:
+            return []
+        
+        # Find missing points that can bridge components
+        current_set = set(map(tuple, current_coords))
+        original_set = set(map(tuple, original_coords))
+        missing_points = [np.array(p) for p in original_set - current_set]
+        
+        bridge_candidates = []
+        for missing_point in missing_points:
+            connected_components = set()
+            
+            # Check which components this point connects
+            for comp_idx, component in enumerate(components):
+                for point_idx in component:
+                    dist = np.linalg.norm(current_coords[point_idx] - missing_point)
+                    if dist <= np.sqrt(2) + 1e-6:
+                        connected_components.add(comp_idx)
+                        break
+            
+            if len(connected_components) >= 2:
+                bridge_candidates.append((len(connected_components), missing_point))
+        
+        # Sort by number of components connected (prefer points that connect more)
+        bridge_candidates.sort(reverse=True, key=lambda x: x[0])
+        return [point for _, point in bridge_candidates]
+    
+    if len(skeleton_coords_2D) <= SmallSkeleton:
+        return skeleton_coords_2D, True
+    
+    original_coords = skeleton_coords_2D.copy()
+    coords = skeleton_coords_2D.copy()
+    
+    # Find main path and priorities
+    main_path, priorities = find_main_path_with_priorities(coords)
+    
+    # Iterative trimming with priority-based removal
+    max_iterations = 20
+    max_3x3 = 3
+    for iteration in range(max_iterations):
+        coords_changed = False
+        points_to_remove = set()
+        
+        # Update priorities after each iteration
+        if iteration > 0:
+            _, priorities = find_main_path_with_priorities(coords)
+        
+        # Check density constraints
+        for i in range(len(coords)):
+            # Check 3x3 neighborhood
+            neighbors_3x3 = get_box_neighbors(coords[i], coords, 3)
+            if len(neighbors_3x3) > max_3x3:
+                excess = len(neighbors_3x3) - max_3x3
+                # Sort by priority (remove lowest priority first)
+                neighbor_priorities = [(priorities[j] if j < len(priorities) else 0, j) 
+                                     for j in neighbors_3x3 if j != i]
+                neighbor_priorities.sort()
+                
+                for _, remove_idx in neighbor_priorities[:excess]:
+                    points_to_remove.add(remove_idx)
+        
+        # Apply removals while checking connectivity
+        final_removals = []
+        for remove_idx in sorted(points_to_remove, reverse=True):
+            temp_coords = np.delete(coords, remove_idx, axis=0)
+            if len(temp_coords) > SmallSkeleton and is_connected(temp_coords):
+                final_removals.append(remove_idx)
+        
+        if final_removals:
+            # Remove points and update priorities
+            for remove_idx in final_removals:
+                coords = np.delete(coords, remove_idx, axis=0)
+                if remove_idx < len(priorities):
+                    priorities = np.delete(priorities, remove_idx)
+            coords_changed = True
+        
+        if not coords_changed:
+            break
+    
+    # Repair connectivity if broken
+    max_repair_attempts = len(coords)
+    for repair_attempt in range(max_repair_attempts):
+        if is_connected(coords):
+            break
+            
+        bridge_points = find_best_bridge_points(coords, original_coords)
+        if not bridge_points:
+            # print("No bridge points found")
+            break
+        
+        # Add bridge points until connected
+        for bridge_point in bridge_points:  # Try up to 5 bridge points
+            test_coords = np.vstack([coords, bridge_point.reshape(1, -1)])
+            # if is_connected(test_coords):
+            coords = test_coords
+            break
+        else:
+            # If no single bridge works, try combinations
+            if len(bridge_points) >= 1:
+                test_coords = np.vstack([coords] + [bp.reshape(1, -1) for bp in bridge_points[:2]])
+                # if is_connected(test_coords):
+                coords = test_coords
+                break
+    
+    # Final fallback
+    # if not is_connected(coords):
+    #     print("Warning: Could not restore full connectivity, using original skeleton")
+    #     coords = original_coords
+
+    # Create a graph from the skeleton coordinates
+    G_sorted_skeleton, T_sorted_skeleton = Graph_Infor_Connected(coords)
+    
+    # Find the longest path through the skeleton
+    max_path, max_edges = Get_Max_Path_Weight(T_sorted_skeleton)
+    
+    sorted_skeleton_coords = coords[max_path]
+    small_sc = len(sorted_skeleton_coords) <= SmallSkeleton
+    return sorted_skeleton_coords, small_sc
 
 
 def Get_Common_Skeleton(filament_clumps_id,related_ids_T,max_path_i,max_path_used,skeleton_coords_record,\
@@ -411,14 +607,16 @@ def Get_Max_Path_Weight(T):
         max_edges = [(max_path[i], max_path[i+1]) for i in range(len(max_path)-1)]
     return max_path,max_edges
 
-def Get_Max_Path_Recursion(origin_data,filament_centers_LBV,max_path_record,max_edges_record,G,T):
-    max_path,max_edges = Get_Max_Path_Weight_SubStructure(origin_data,filament_centers_LBV,T)
+def Get_Max_Path_Recursion(origin_data,filament_centers_LBV,max_path_record,max_edges_record,G,T,Tree_0,sub_tree=False):
+    max_path,max_edges = Get_Max_Path_Weight_SubStructure(origin_data,filament_centers_LBV,T,Tree_0,sub_tree)
     max_path_record.append(max_path)
     max_edges_record.append(max_edges)
     new_T = T.copy()
     for i in range(len(max_path)-1):
         new_T.remove_edge(max_path[i], max_path[i+1])
-    
+    for i in np.arange(0,len(max_path)-1,2):
+        Tree_0.remove_edge(max_path[i], max_path[i+1])
+        
     sub_degrees = new_T.degree
     nodes_T = new_T.nodes
     new_T_2 = new_T.copy()
@@ -436,7 +634,7 @@ def Get_Max_Path_Recursion(origin_data,filament_centers_LBV,max_path_record,max_
                 if sub_edge not in new_T_2.edges:
                     T.remove_edge(sub_edge[0],sub_edge[1])
             max_path_record,max_edges_record = \
-                            Get_Max_Path_Recursion(origin_data,filament_centers_LBV,max_path_record,max_edges_record,G,T)      
+                        Get_Max_Path_Recursion(origin_data,filament_centers_LBV,max_path_record,max_edges_record,G,T,Tree_0,sub_tree=True)      
     return max_path_record,max_edges_record
 
 
@@ -496,7 +694,7 @@ def Get_Single_Filament_Skeleton(filament_mask_2D):
     filament_skeleton = np.zeros_like(filament_mask_2D)
     for coord_i in range(len(skeleton_coords_2D)):
         filament_skeleton[skeleton_coords_2D[coord_i][0],skeleton_coords_2D[coord_i][1]]=1
-    skeleton_coords_2D,small_sc = Trim_Skeleton_Coords_2D(skeleton_coords_2D,filament_mask_2D)
+    skeleton_coords_2D,small_sc = Trim_Skeleton_Coords_2D(skeleton_coords_2D)
     return skeleton_coords_2D,filament_skeleton,all_skeleton_coords
 
 def Cal_B_Spline(SampInt,skeleton_coords_2D,fil_mask):
@@ -744,9 +942,6 @@ def Update_Max_Path_Record(max_path_record):
     return max_path_record_T
 
 
-
-
-
 def Search_Max_Path_And_Edges(paths_and_weights):
     max_path = []
     max_edges = []
@@ -875,7 +1070,7 @@ def Get_Single_Filament_Skeleton_Weighted(fil_image,fil_mask,clump_numbers,commo
     else :
         max_path,max_edges = Get_Max_Path_Intensity_Weighted_Fast(fil_mask,Tree,mask_coords,clump_numbers)
     skeleton_coords_2D = mask_coords[max_path]
-    skeleton_coords_2D,small_sc = Trim_Skeleton_Coords_2D(skeleton_coords_2D,fil_mask,CalSubSK,SmallSkeleton)
+    skeleton_coords_2D,small_sc = Trim_Skeleton_Coords_2D(skeleton_coords_2D,SmallSkeleton)
     return skeleton_coords_2D,small_sc
 
 

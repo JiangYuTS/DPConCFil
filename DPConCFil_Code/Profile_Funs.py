@@ -164,8 +164,8 @@ def Cal_Profile_IOU(filamentObj, MeanProfile=True):
     """
     if MeanProfile:
         # Use the precomputed mean profile for IOU calculation
-        max_range = filamentObj.max_range
-        mean_profile = filamentObj.mean_profile
+        # max_range = filamentObj.max_range
+        # mean_profile = filamentObj.mean_profile
         mean_profile_left_r = filamentObj.mean_profile_left_r  # Reversed left side
         mean_profile_right = filamentObj.mean_profile_right  # Right side
         
