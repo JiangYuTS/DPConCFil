@@ -22,7 +22,7 @@ class FilamentInfor(object):
     filaments, including their length, width, orientation, and velocity gradients.
     """
     
-    def __init__(self, clumpsObj=None, parameters=None, save_files=None, SkeletonType=None):
+    def __init__(self, clumpsObj=None, parameters=None, save_files=None, SkeletonType=None,SmallSkeleton=12):
         """
         Initialize the FilamentInfor object.
         
@@ -48,7 +48,7 @@ class FilamentInfor(object):
         self.AllowItems = 4          # Minimum number of items allowed in a filament
         self.AllowClumps = 2         # Minimum number of clumps allowed in a filament
         self.CalSub = False          # Flag for calculating substructures
-        self.SmallSkeleton = 6       # Threshold for small skeleton detection
+        self.SmallSkeleton = SmallSkeleton       # Threshold for small skeleton detection
         self.SkeletonType = SkeletonType  # Type of skeleton algorithm to use
 
         # Initialize lists for storing substructure information
@@ -320,7 +320,7 @@ class FilamentInfor(object):
 
         return filament_infor_all
 
-    def Get_Item_Dictionary_Cuts(self, filament_clumps_id, dictionary_cuts=None, SampInt=1, Substructure=False):
+    def Get_Item_Dictionary_Cuts(self, filament_clumps_id, dictionary_cuts=None, SampInt=1, Substructure=False, WeightV=True):
         """
         Calculate cross-sections (cuts) along the filament's skeleton.
         
@@ -362,19 +362,20 @@ class FilamentInfor(object):
         connected_ids_dict = self.clumpsObj.connected_ids_dict
         clump_coords_dict = self.clumpsObj.clump_coords_dict
         filament_coords = self.filament_coords
-
+    
         # Initialize lists for path and edge records
         filament_centers_LBV = []
         max_path_record = []
         max_edges_record = []
-
+    
         # Convert clump center coordinates to LBV format and sort them
         for index in filament_clumps_id:
             filament_centers_LBV.append([centers[index][2], centers[index][1], centers[index][0]])
         sorted_id = sorted(range(len(filament_centers_LBV)), key=lambda k: filament_centers_LBV[k], reverse=False)
         filament_centers_LBV = (np.array(filament_centers_LBV)[sorted_id])
         filament_clumps_id = np.array(filament_clumps_id)[sorted_id]
-
+        self.filament_centers_LBV = filament_centers_LBV
+    
         # Create 2D mask of the filament
         filament_mask_2D = np.zeros((regions_data.shape[1], regions_data.shape[2]), dtype=np.int16)
         filament_mask_2D[filament_coords[:, 1], filament_coords[:, 2]] = 1
@@ -382,13 +383,15 @@ class FilamentInfor(object):
         
         # Build graph and tree for substructure analysis
         Graph, Tree = FCFA.Graph_Infor_SubStructure(origin_data, fil_mask, filament_centers_LBV, filament_clumps_id, \
-                                                    self.clumpsObj.connected_ids_dict)
-        
+                                                    self.clumpsObj.connected_ids_dict,WeightV)
+        self.graph_substructure = Graph
+        self.tree_substructure = Tree
+    
         # Recursively find maximum paths through the graph
         max_path_record, max_edges_record = FCFA.Get_Max_Path_Recursion(origin_data, filament_centers_LBV, \
                                                                         max_path_record, max_edges_record, Graph, Tree, Tree)
         max_path_record = FCFA.Update_Max_Path_Record(max_path_record)
-
+    
         # Initialize variables for substructure analysis
         self.CalSub = False
         max_path_used = []
@@ -405,22 +408,21 @@ class FilamentInfor(object):
                 max_path_i = max_path_record[subpart_id]
                 max_path_used.append(max_path_i)
                 related_ids_T = np.array(filament_clumps_id)[max_path_i]
-
+    
                 if type(dictionary_cuts) != type(None) and len(related_ids_T) > 0:
                     # Get coordinates and data for this substructure
                     filament_coords, filament_item, data_wcs_item, regions_data_T, start_coords, filament_item_mask_2D, lb_area = \
                         FCFA.Filament_Coords(origin_data, regions_data, data_wcs, clump_coords_dict, related_ids_T,
                                              CalSub)
-
+    
                     # Create 2D projection and mask
                     fil_image = filament_item.sum(0)
                     fil_mask = filament_item_mask_2D.astype(bool)
                     
                     # Get common skeleton coordinates
-                    common_clump_id, common_sc_item = FCFA.Get_Common_Skeleton(filament_clumps_id, related_ids_T,\
-                                                                               max_path_i, max_path_used,
-                                                                               skeleton_coords_record, start_coords,
-                                                                               clump_coords_dict)
+                    common_clump_id, common_sc_item, sub_centers_item = FCFA.Get_Common_Skeleton(filament_clumps_id, related_ids_T,\
+                                                                               max_path_i, max_path_used,skeleton_coords_record, 
+                                                                               start_coords,clump_coords_dict,centers)
                     
                     # Get skeleton coordinates based on the specified method
                     if SkeletonType == 'Morphology':
@@ -430,12 +432,10 @@ class FilamentInfor(object):
                         all_skeleton_coords = None
                         clumps_number = len(related_ids_T)
                         skeleton_coords_2D, small_sc = FCFA.Get_Single_Filament_Skeleton_Weighted(fil_image, fil_mask, \
-                                                                                                  clumps_number,
-                                                                                                  common_sc_item,
-                                                                                                  SmallSkeleton)
+                                                                clumps_number,common_sc_item,sub_centers_item,SmallSkeleton)
                     else:
                         print('Please choose the skeleton_type between Morphology and Intensity')
-
+    
                     # Record skeleton coordinates
                     skeleton_coords_record.append(skeleton_coords_2D + start_coords[1:])
                     
@@ -446,11 +446,10 @@ class FilamentInfor(object):
                         
                         # Calculate cuts along the skeleton
                         dictionary_cuts = FCFA.Cal_Dictionary_Cuts(SampInt, CalSub, regions_data_T, related_ids_T, \
-                                                                   connected_ids_dict, clump_coords_dict,
-                                                                   skeleton_coords_2D, \
+                                                                   connected_ids_dict, clump_coords_dict,skeleton_coords_2D, \
                                                                    fil_image, fil_mask, dictionary_cuts, start_coords)
                         dictionary_cuts = FCFA.Update_Dictionary_Cuts(dictionary_cuts, start_coords)
-
+    
                         # Record substructure information
                         substructure_ids_T += [list(related_ids_T)]
                         substructure_num_i += 1
@@ -493,6 +492,7 @@ class FilamentInfor(object):
         # Store and return the dictionary cuts
         self.dictionary_cuts = dictionary_cuts
         return dictionary_cuts
+        
 
     def Filament_Detect(self, related_ids=None):
         """

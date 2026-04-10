@@ -1,11 +1,10 @@
 import time
 import numpy as np
 import astropy.io.fits as fits
+from astropy import units as u
 from astropy.table import Table
 from skimage import measure, morphology
 from scipy import optimize
-import copy
-import copy
 from tqdm import tqdm
 
 import FacetClumps
@@ -212,7 +211,7 @@ def Build_RC_Dict_Simplified(com, regions_array, regions_list):
         rc_dict[i] = []
     
     # Round coordinates to integers for indexing
-    center = np.array(np.around(com, 0), dtype='uint16')
+    center = np.array(np.around(com, 0), dtype='uint32')
     
     # Assign each center to its containing region
     for cent in center:
@@ -447,7 +446,7 @@ def Clump_Items_Con(input_data, index, regions_list, output_dicts):
     return clump_item, start_coords, output_dicts
 
 
-def Gaussian_Fit_Infor(input_data, regions_list, centers, edges, angles,fit_flag):
+def Gaussian_Fit_Infor(input_data, regions_list, centers, edges, angles, fit_flag):
     """
     Perform Gaussian fitting on all clumps to refine their parameters.
     
@@ -490,7 +489,6 @@ def Gaussian_Fit_Infor(input_data, regions_list, centers, edges, angles,fit_flag
     # Create copies to store refined values
     centers_fited = centers.copy()
     angles_fited = angles.copy()
-    origin_data_shape = input_data[0].shape
     
     # Process each clump with progress bar
     for index in tqdm(range(len(centers))):
@@ -512,16 +510,20 @@ def Gaussian_Fit_Infor(input_data, regions_list, centers, edges, angles,fit_flag
                 parameters = fit_infor.x
                 parameters_1 = fit_infor_1.x
                 
-                # Calculate refined center in original data coordinates
-                centers_fited_index_x = np.around(parameters_1[1] + start_coords[0], 3)
-                centers_fited_index_y = np.around(parameters[1] + start_coords[1], 3)
-                centers_fited_index_z = np.around(parameters[2] + start_coords[2], 3)
-                
-                # Check if center is inside data boundaries
-                if centers_fited_index_x > 0 and centers_fited_index_x < origin_data_shape[0] and \
-                        centers_fited_index_y > 0 and centers_fited_index_y < origin_data_shape[1] and \
-                        centers_fited_index_z > 0 and centers_fited_index_z < origin_data_shape[2]:
+                # Check if center is inside the clump
+                centers_fited_index_x = np.int64(np.around(parameters_1[1] + start_coords[0]))
+                centers_fited_index_y = np.int64(np.around(parameters[1] + start_coords[1]))
+                centers_fited_index_z = np.int64(np.around(parameters[2] + start_coords[2]))
+                clump_coords = regions_list[index].coords
+
+                if centers_fited_index_x in clump_coords[:,0] and centers_fited_index_y in clump_coords[:,1] and\
+                    centers_fited_index_z in clump_coords[:,2] :
                     
+                    # Calculate refined center in original data coordinates
+                    centers_fited_index_x = np.around(parameters_1[1] + start_coords[0], 3)
+                    centers_fited_index_y = np.around(parameters[1] + start_coords[1], 3)
+                    centers_fited_index_z = np.around(parameters[2] + start_coords[2], 3)
+
                     # Update center coordinates
                     centers_fited[index] = [centers_fited_index_x, centers_fited_index_y, centers_fited_index_z]
                     
@@ -577,8 +579,11 @@ def Get_Data_Ranges_WCS(origin_data, data_wcs):
     
     # Format coordinate ranges as [longitude, latitude, velocity]
     # Note: velocity is converted from m/s to km/s
+    data_ranges_start[2] = (data_ranges_start[2]*data_wcs.wcs.cunit[2]).to(u.km/u.s).value
+    data_ranges_end[2] = (data_ranges_end[2]*data_wcs.wcs.cunit[2]).to(u.km/u.s).value
+
     data_ranges_lbv = [[data_ranges_start[0].tolist(), data_ranges_end[0].tolist()], \
                        [data_ranges_start[1].tolist(), data_ranges_end[1].tolist()], \
-                       [data_ranges_start[2] / 1000, data_ranges_end[2] / 1000]]
-    
+                       [data_ranges_start[2].tolist(), data_ranges_end[2].tolist()]]
+
     return data_ranges_lbv

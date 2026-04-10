@@ -3,7 +3,7 @@ import os
 import numpy as np
 import astropy.io.fits as fits
 from astropy.table import Table
-from skimage import measure, morphology
+from skimage import measure
 from collections import defaultdict
 from tqdm import tqdm
 
@@ -13,7 +13,7 @@ import Filament_Class_Funs_Table as FCFT
 
 
 class FilamentInfor(object):
-    def __init__(self, clumpsObj=None, parameters=None, save_files=None, SkeletonType=None):
+    def __init__(self, clumpsObj=None, parameters=None, save_files=None, SkeletonType=None,SmallSkeleton=6):
         self.clumpsObj = clumpsObj
         self.parameters = parameters
         if type(parameters) != type(None):
@@ -24,7 +24,7 @@ class FilamentInfor(object):
         self.AllowItems = 4
         self.AllowClumps = 2
         self.CalSub = False
-        self.SmallSkeleton = 6
+        self.SmallSkeleton = SmallSkeleton
         self.SkeletonType = SkeletonType
 
         self.substructure_num = []
@@ -219,7 +219,7 @@ class FilamentInfor(object):
         Graph, Tree = FCFA.Graph_Infor_SubStructure(origin_data, fil_mask, filament_centers_LBV, filament_clumps_id, \
                                                     self.clumpsObj.connected_ids_dict)
         max_path_record, max_edges_record = FCFA.Get_Max_Path_Recursion(origin_data, filament_centers_LBV, \
-                                                                        max_path_record, max_edges_record, Graph, Tree)
+                                                                        max_path_record, max_edges_record, Graph, Tree, Tree)
         max_path_record = FCFA.Update_Max_Path_Record(max_path_record)
 
         self.CalSub = False
@@ -241,10 +241,10 @@ class FilamentInfor(object):
                     fil_image = filament_item
                     fil_mask = filament_item_mask_2D.astype(bool)
 
-                    common_clump_id, common_sc_item = FCFA.Get_Common_Skeleton(filament_clumps_id,related_ids_T, \
+                    common_clump_id, common_sc_item, sub_centers_item = FCFA.Get_Common_Skeleton(filament_clumps_id,related_ids_T, \
                                                                                max_path_i, max_path_used,
                                                                                skeleton_coords_record, start_coords,
-                                                                               clump_coords_dict)
+                                                                               clump_coords_dict,centers)
                     if SkeletonType == 'Morphology':
                         skeleton_coords_2D, filament_skeleton, all_skeleton_coords = FCFA.Get_Single_Filament_Skeleton(
                             fil_mask)
@@ -252,9 +252,7 @@ class FilamentInfor(object):
                         all_skeleton_coords = None
                         clumps_number = len(related_ids_T)
                         skeleton_coords_2D, small_sc = FCFA.Get_Single_Filament_Skeleton_Weighted(fil_image, fil_mask, \
-                                                                                                  clumps_number,
-                                                                                                  common_sc_item,
-                                                                                                  SmallSkeleton)
+                                                                        clumps_number,common_sc_item,sub_centers_item,SmallSkeleton)
                     else:
                         print('Please choose the skeleton_type between Morphology and Intensity')
 
@@ -264,8 +262,7 @@ class FilamentInfor(object):
                         skeleton_coords_2D = skeleton_coords_2D + np.random.random(skeleton_coords_2D.shape) / 10000
                         dictionary_cuts = FCFA.Cal_Dictionary_Cuts(SampInt, CalSub, regions_data_T, related_ids_T, \
                                                                    connected_ids_dict, clump_coords_dict,
-                                                                   skeleton_coords_2D, \
-                                                                   fil_image, fil_mask, dictionary_cuts, start_coords)
+                                                                   skeleton_coords_2D, fil_image, fil_mask, dictionary_cuts, start_coords)
                         dictionary_cuts = FCFA.Update_Dictionary_Cuts(dictionary_cuts, start_coords)
 
                         substructure_ids_T += [list(related_ids_T)]

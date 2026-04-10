@@ -1,7 +1,7 @@
 import time
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib.colors as colors
+import matplotlib.colors as mcolors
 from astropy import units as u
 from skimage import measure
 import copy
@@ -77,10 +77,10 @@ def Plot_Clumps_Infor(clumpsObj,figsize=(8,6),text_num=False,line_scale=3,save_p
     plt.xticks([]),plt.yticks([])
     if save_path!=None:
         plt.savefig(save_path, format='pdf', dpi=1000)
-    plt.show()
+    return ax0
     
     
-def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.arcmin, save_path=None):
+def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, lw=2, plot_cuts=False, plot_peaks=False, spacing=None, save_path=None):
     # filament_com = filamentObj.filament_com
     filament_com_wcs = filamentObj.filament_com_wcs
     filament_ratio = filamentObj.filament_ratio
@@ -105,17 +105,20 @@ def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.
     dist_matrix = FCFA.Dists_Array(points_array, peaks_array)
     pp_distance = np.diag(dist_matrix)
     mask_width_mean = np.mean(dictionary_cuts_item['mask_width'])
-    for cut_line_id in range(len(dictionary_cuts_item['plot_cuts'])):
-        if pp_distance[cut_line_id] < mask_width_mean / 2:
-            start = dictionary_cuts_item['plot_cuts'][cut_line_id][0]
-            end = dictionary_cuts_item['plot_cuts'][cut_line_id][1]
-            ax0.plot([start[0], end[0]], [start[1], end[1]], 'r-', markersize=8., linewidth=1., alpha=1)
+    if plot_cuts:
+        for cut_line_id in range(len(dictionary_cuts_item['plot_cuts'])):
+            if pp_distance[cut_line_id] < mask_width_mean / 2:
+                start = dictionary_cuts_item['plot_cuts'][cut_line_id][0]
+                end = dictionary_cuts_item['plot_cuts'][cut_line_id][1]
+                ax0.plot([start[0], end[0]], [start[1], end[1]], 'r-', markersize=8., linewidth=1., alpha=1)
 
     for points in dictionary_cuts_item['points']:
-        ax0.plot(points[:, 0], points[:, 1], 'r', label='fit', lw=3, alpha=1.0, markersize=8.)
-#     ax0.plot(np.asarray(dictionary_cuts_item['plot_peaks'])[:, 0].astype(int),
-#              np.asarray(dictionary_cuts_item['plot_peaks'])[:, 1].astype(int),
-#              'b.', markersize=8., alpha=0.75, markeredgecolor='white', markeredgewidth=0.5)
+        ax0.plot(points[:, 0], points[:, 1], 'r', label='fit', lw=lw, alpha=1.0, markersize=8.)
+    
+    if plot_peaks:
+        ax0.plot(np.asarray(dictionary_cuts_item['plot_peaks'])[:, 0].astype(int),
+                np.asarray(dictionary_cuts_item['plot_peaks'])[:, 1].astype(int),
+                'b.', markersize=8., alpha=0.75, markeredgecolor='white', markeredgewidth=0.5)
 
     vmin = np.min(filament_item[np.where(filament_item != 0)])
     vmax = np.nanpercentile(filament_item[np.where(filament_item != 0)], 98.)
@@ -123,7 +126,7 @@ def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.
                origin='lower',
                cmap='gray',
                interpolation='none',
-               norm=colors.Normalize(vmin=vmin, vmax=vmax))
+               norm=mcolors.Normalize(vmin=vmin, vmax=vmax))
     ax0.contourf(filament_item,
                  levels=[0., .01],
                  colors='w')
@@ -156,64 +159,89 @@ def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.
         sava_name = save_path + '_l{}_b{}_v{}.png'. \
             format(filament_com_wcs[0], filament_com_wcs[1], filament_com_wcs[2])
         plt.savefig(sava_name)
-    plt.show()
+    return ax0
 
     
-def Plot_Filament(filamentObj,figsize=(8,6),fontsize=12,spacing=12*u.arcmin,save_path=None):   
+def Plot_Filament(filamentObj,figsize=(8, 6),colors=None,background='fils_data',cmap='gray', tick_logic=True, \
+                  lw=2, fontsize=12,spacing=12*u.arcmin,save_path=None):
     data_wcs = filamentObj.clumpsObj.data_wcs
     origin_data = filamentObj.clumpsObj.origin_data
     regions_data = filamentObj.clumpsObj.regions_data
     filament_regions_data = filamentObj.filament_regions_data
-    filaments_data = np.zeros_like(origin_data)
-    filaments_data[filament_regions_data>0] = origin_data[filament_regions_data>0]
     dictionary_cuts = filamentObj.dictionary_cuts
-    
-    fig = plt.figure(figsize=(8,6))
-    ax0 = fig.add_subplot(111,projection=data_wcs.celestial)
-#     for cut_line_id in range(len(dictionary_cuts['plot_cuts'])):
-#         start = dictionary_cuts['plot_cuts'][cut_line_id][0]
-#         end = dictionary_cuts['plot_cuts'][cut_line_id][1]
-#         ax0.plot([start[0], end[0]], [start[1], end[1]], 'r-', markersize = 8.,linewidth = 1.,alpha=1)
-    for points in dictionary_cuts['points']:
-        ax0.plot(points[:,0], points[:,1], 'r', label='fit', lw=3, alpha=1.0, markersize = 8.)
-#     ax0.plot(np.asarray(dictionary_cuts['plot_peaks'])[:, 0].astype(int),
-#              np.asarray(dictionary_cuts['plot_peaks'])[:, 1].astype(int),
-#              'b.', markersize = 8.,alpha=0.75, markeredgecolor='white',markeredgewidth=0.5)
-    vmin = np.min(filaments_data[np.where(filaments_data!=0)])
-    vmax = np.nanpercentile(filaments_data[np.where(filaments_data!=0)], 98.)
-    ax0.imshow(filaments_data,
+    substructure_num = filamentObj.substructure_num
+    fil_num = filament_regions_data[filament_regions_data > 0].max()
+
+    fig = plt.figure(figsize=figsize)
+    if tick_logic:
+        ax0 = fig.add_subplot(111,projection=data_wcs.celestial)
+        plt.rcParams['xtick.direction'] = 'in'
+        plt.rcParams['ytick.direction'] = 'in'
+        plt.rcParams['xtick.color'] = 'green'
+        plt.rcParams['ytick.color'] = 'green'
+        plt.xlabel("Galactic Longitude",fontsize=fontsize)
+        plt.ylabel("Galactic Latitude",fontsize=fontsize)
+        ax0.coords[0].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+        ax0.coords[1].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+        lon = ax0.coords[0]
+        lat = ax0.coords[1]
+        lon.set_major_formatter("d.d")
+        lat.set_major_formatter("d.d")
+        if spacing != None:
+            lon.set_ticks(spacing=spacing)
+            lat.set_ticks(spacing=spacing)
+        ax0.tick_params(axis='both', which='major', labelsize=fontsize)
+    else:
+        ax0 = fig.add_subplot(111)
+        ax0.set_xticks([]), ax0.set_yticks([])
+    used_id_len = 0
+    color_id = 0
+    if colors == None:
+        colors = plt.cm.Spectral(np.linspace(0, 1, fil_num))
+    elif isinstance(colors, str):
+        colors = [colors]*fil_num
+    else:
+        print('Wrong colors!')
+    if len(substructure_num) != 0 :
+        for sub_sk_len in substructure_num:
+            for i in range(sub_sk_len):
+                if used_id_len+i < len(dictionary_cuts['points']):
+                    points = dictionary_cuts['points'][used_id_len+i]
+                    ax0.plot(points[:, 0], points[:, 1], color=colors[color_id],label='fit',lw=lw, alpha=1.0, markersize=8.)
+                else:
+                    break
+            used_id_len += sub_sk_len 
+            color_id += 1
+    else:
+        for points in dictionary_cuts['points']:
+            ax0.plot(points[:, 0], points[:, 1], color=colors[color_id],label='fit',lw=lw, alpha=1.0, markersize=8.)
+            color_id += 1
+
+    if background == 'fils_data':
+        filaments_data = origin_data * (filament_regions_data>0)
+        background_data = filaments_data
+    elif background == 'clumps_data':
+        background_data = origin_data * (regions_data>0)
+    vmin = np.min(background_data[np.where(background_data != 0)])
+    vmax = np.nanpercentile(background_data[np.where(background_data != 0)], 98.)
+    ax0.imshow(background_data,
                origin='lower',
-               cmap='gray',
+               cmap=cmap,
                interpolation='none',
-               norm = colors.Normalize(vmin = vmin, vmax =  vmax))
-    ax0.contourf(filaments_data,
-                 levels = [0., .01],
-                 colors = 'w')
-    plt.rcParams['xtick.direction'] = 'in'
-    plt.rcParams['ytick.direction'] = 'in'
-    plt.rcParams['xtick.color'] = 'red'
-    plt.rcParams['ytick.color'] = 'red'
-    plt.xlabel("Galactic Longutide",fontsize=fontsize)
-    plt.ylabel("Galactic Latitude",fontsize=fontsize)
-    lon = ax0.coords[0]
-    lat = ax0.coords[1]
-    lon.set_major_formatter("d.d")
-    lat.set_major_formatter("d.d")
-    lon.set_ticks(spacing=spacing)
-    
+               norm=mcolors.Normalize(vmin=vmin, vmax=vmax))
+    ax0.contourf(background_data,
+                 levels=[0., .01],
+                 colors='w')
     if save_path != None:
-#         filament_data_shape = filaments_data.shape
-#         ax0.text(filament_data_shape[2]/20,filament_data_shape[1]-filament_data_shape[1]/15,'{}'.\
-#          format(save_path.split('/')[-1].split('_')[0]),color='black',fontsize=fontsize)
-        sava_name = save_path
-        plt.savefig(sava_name)
-    plt.show()
+        plt.savefig(save_path, format='pdf', dpi=1000)
+    return ax0
     
 
 def Get_Data_Item_Ranges_WCS(filamentObj,data_ranges_lbv):
     filament_data = filamentObj.filament_data
     filament_item = filamentObj.filament_item
     start_coords = filamentObj.start_coords
+    delta_v = filamentObj.clumpsObj.delta_v
     origin_data_shape = filament_data.shape
     filament_item_shape = filament_item.shape
     delta_l = (data_ranges_lbv[0][1]-data_ranges_lbv[0][0])/origin_data_shape[2]
@@ -221,7 +249,7 @@ def Get_Data_Item_Ranges_WCS(filamentObj,data_ranges_lbv):
 #     delta_v = (data_ranges_lbv[2][1]-data_ranges_lbv[2][0])/origin_data_shape[0]
     data_item_ranges_l = [data_ranges_lbv[0][0]+delta_l*start_coords[2],data_ranges_lbv[0][0]+delta_l*(start_coords[2]+filament_item_shape[2])]
     data_item_ranges_b = [data_ranges_lbv[1][0]+delta_b*start_coords[1],data_ranges_lbv[1][0]+delta_b*(start_coords[1]+filament_item_shape[1])]
-#     data_item_ranges_v = [data_ranges_lbv[2][0]+delta_v*start_coords[0],data_ranges_lbv[2][0]+delta_v*(start_coords[0]+filament_item_shape[0])]
+    data_item_ranges_v = [data_ranges_lbv[2][0]+delta_v*start_coords[0],data_ranges_lbv[2][0]+delta_v*(start_coords[0]+filament_item_shape[0])]
     data_item_ranges_lbv = [data_item_ranges_l,data_item_ranges_b,data_item_ranges_v]
     return data_item_ranges_lbv
 
@@ -229,7 +257,6 @@ def Get_WCS_Ticks(data_ranges,delta_sign,delta_interval,decimal_digits):
     data_ranges_start = data_ranges[0]
     data_ranges_end = data_ranges[1]
     ticks = []
-    ticks_num = 0
     tick_start = data_ranges_start
     while True:
         tick_item = np.around(np.around(tick_start+delta_sign*5/10**(decimal_digits+1),decimal_digits+2),decimal_digits)
@@ -292,5 +319,5 @@ def Plot_Filament_Profile(filamentObj,figsize=(8,6),fontsize=16,xlims=(-30,30),s
 
     if save_path != None:
         plt.savefig(save_path, format='pdf', dpi=1000)
-    plt.show()
+    return ax0
     

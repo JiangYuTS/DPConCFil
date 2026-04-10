@@ -2,6 +2,7 @@ import warnings
 import time
 import numpy as np
 import astropy.io.fits as fits
+from astropy import units as u
 import astropy.wcs as wcs
 from astropy.table import Table
 from skimage import measure, morphology
@@ -50,6 +51,7 @@ class ClumpInfor(object):
         # Replace NaN values with -999 to avoid computational issues
         origin_data[np.isnan(origin_data)] = -999
         # Create WCS object for coordinate transformations between pixel and sky coordinates
+        data_header['CTYPE3'] = 'VELO'  
         data_wcs = wcs.WCS(data_header)
 
         # Store essential data as object attributes
@@ -180,11 +182,12 @@ class ClumpInfor(object):
                     # For 3D WCS (typical for spectral cubes)
                     cen1, cen2, cen3 = self.data_wcs.all_pix2world(centers[:, 2], centers[:, 1], centers[:, 0], 0)
                     # Scale velocity (cen3) by 1000 to convert from km/s to m/s
-                    centers_wcs = np.column_stack([np.around(cen1, 3), np.around(cen2, 3), np.around(cen3 / 1000, 3)])
+                    centers_wcs = np.column_stack([np.around(cen1, 3), np.around(cen2, 3), np.around(cen3, 3)])
                 elif self.data_wcs.world_n_dim == 4:
                     # For 4D WCS (with an additional dimension, often time)
                     cen1, cen2, cen3, temp_c = self.data_wcs.all_pix2world(centers[:, 2], centers[:, 1], centers[:, 0], 0, 0)
-                    centers_wcs = np.column_stack([np.around(cen1, 3), np.around(cen2, 3), np.around(cen3 / 1000, 3)])
+                    centers_wcs = np.column_stack([np.around(cen1, 3), np.around(cen2, 3), np.around(cen3, 3)])
+                centers_wcs[:,2] = (centers_wcs[:,2]*self.data_wcs.wcs.cunit[2]).to(u.km/u.s).value
                 # Ensure floating-point values are displayed without scientific notation
                 np.set_printoptions(suppress=True)
             else:

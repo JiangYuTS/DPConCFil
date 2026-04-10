@@ -4,7 +4,6 @@ from scipy import ndimage
 from collections import defaultdict,deque
 from scipy.interpolate import splprep, splev, RegularGridInterpolator
 import networkx as nx
-from scipy.spatial.distance import cdist
 
 
 
@@ -395,7 +394,7 @@ def Graph_Infor_Connected(points):
     return Graph, Tree
 
 
-def Graph_Infor_SubStructure(origin_data, filament_mask_2D, filament_centers_LBV, filament_clumps_id, connected_ids_dict):
+def Graph_Infor_SubStructure(origin_data, filament_mask_2D, filament_centers_LBV, filament_clumps_id, connected_ids_dict, weight_v=True):
     """
     Create a weighted graph connecting substructures within a filament.
     
@@ -464,7 +463,11 @@ def Graph_Infor_SubStructure(origin_data, filament_mask_2D, filament_centers_LBV
                 if 0 not in mask_2D_ids:
                     # Weight is spatial distance * velocity difference / intensity
                     # (higher intensity means lower weight = preferred connection)
-                    weight = dist_matrix[i, j] * np.abs(points_V[i] - points_V[j]) / (weight_ij)
+                    if weight_v:
+                        weight = dist_matrix[i, j] * np.sqrt(np.abs(points_V[i] - points_V[j])) / weight_ij
+                    else:
+                        weight = dist_matrix[i, j] / weight_ij
+                        # weight = dist_matrix[i, j] / (np.abs(points_V[i] - points_V[j]) * weight_ij)
                     Graph.add_edge(i, j, weight=weight)
     
     # Find the minimum spanning tree
@@ -566,7 +569,7 @@ def Get_Max_Path_Weight(T):
     return max_path, max_edges
 
 
-def Get_Max_Path_Weight_SubStructure(origin_data, filament_centers_LBV, T, Tree_0, sub_tree):
+def Get_Max_Path_Weight_SubStructure(origin_data, filament_centers_LBV, T, Tree_0, sub_tree, weight_v=True):
     """
     Find the maximum weighted path considering substructure characteristics.
     
@@ -633,8 +636,11 @@ def Get_Max_Path_Weight_SubStructure(origin_data, filament_centers_LBV, T, Tree_
                     weight_ij = origin_data[line_coords[:, 2], line_coords[:, 1], line_coords[:, 0]].mean()
                     
                     # Weight is spatial distance * velocity difference * intensity
-                    path_weight += dist_matrix[path[k], path[k + 1]] * np.abs(
-                        points_V[path[k]] - points_V[path[k + 1]]) * weight_ij
+                    if weight_v:
+                        path_weight += dist_matrix[path[k], path[k + 1]] * np.sqrt(np.abs(
+                            points_V[path[k]] - points_V[path[k + 1]])) * weight_ij
+                    else:
+                        path_weight += dist_matrix[path[k], path[k + 1]] * weight_ij
                 
                 paths_and_weights.append((path, path_weight))
     
@@ -647,7 +653,8 @@ def Get_Max_Path_Weight_SubStructure(origin_data, filament_centers_LBV, T, Tree_
     return max_path, max_edges
 
 
-def Get_Max_Path_Recursion(origin_data, filament_centers_LBV, max_path_record, max_edges_record, G, T , Tree_0 ,sub_tree=False):
+def Get_Max_Path_Recursion(origin_data, filament_centers_LBV, max_path_record, max_edges_record,\
+                           G, T, Tree_0, sub_tree=False, weight_v=True):
     """
     Recursively find all significant paths in a tree representing a filament.
     
@@ -678,7 +685,7 @@ def Get_Max_Path_Recursion(origin_data, filament_centers_LBV, max_path_record, m
         Updated list containing all edges in the paths
     """
     # Find the maximum weight path in the current tree
-    max_path, max_edges = Get_Max_Path_Weight_SubStructure(origin_data, filament_centers_LBV, T , Tree_0 ,sub_tree)
+    max_path, max_edges = Get_Max_Path_Weight_SubStructure(origin_data, filament_centers_LBV, T, Tree_0, sub_tree, weight_v)
     
     # Record this path and its edges
     max_path_record.append(max_path)
@@ -720,9 +727,78 @@ def Get_Max_Path_Recursion(origin_data, filament_centers_LBV, max_path_record, m
             
             # Recursively find paths in this subgraph
             max_path_record, max_edges_record = \
-                Get_Max_Path_Recursion(origin_data, filament_centers_LBV, max_path_record, max_edges_record, G, T, Tree_0, sub_tree=True)
+                Get_Max_Path_Recursion(origin_data, filament_centers_LBV, max_path_record, max_edges_record, \
+                                       G, T, Tree_0, sub_tree=True, weight_v=weight_v)
     
     return max_path_record, max_edges_record
+
+
+def Cal_Tree_By_Clump_IDs(filamentObj, clumps_id, WeightV=True):
+    """
+    Construct a tree from clump IDs in a filament and extract main paths.
+
+    This function extracts the coordinates of the specified clumps within a filament,
+    generates a centered sub-cube, builds a weighted graph connecting the clumps,
+    finds the minimum spanning tree (MST), and recursively identifies the main
+    paths through the tree.
+
+    Parameters
+    ----------
+    filamentObj : object
+        Filament object containing clumpsObj with the required data attributes.
+    clumps_id : list
+        List of clump IDs that form the filament to analyze.
+    WeightV : bool, optional
+        If True, incorporate velocity differences into edge weights when building
+        the substructure graph.
+
+    Returns
+    -------
+    filament_item : ndarray
+        3D data cube of the filament, centered in a local coordinate system.
+    Tree : networkx.Graph
+        Minimum spanning tree connecting the clumps.
+    centers_item_LBV : ndarray
+        Coordinates of clump centers in local (l,b,v) coordinate system.
+    max_path_record : list
+        List of paths in the tree representing main filamentary structures.
+    """
+
+    # Initialize lists for storing clump center coordinates and path records
+    centers_LBV = []
+    max_path_record = []
+    max_edges_record = []
+
+    # Extract base data from the filament object
+    data_wcs = filamentObj.clumpsObj.data_wcs             # WCS for coordinate transformations
+    origin_data = filamentObj.clumpsObj.origin_data       # Original 3D intensity cube
+    regions_data = filamentObj.clumpsObj.regions_data     # Integer mask of clump regions
+    centers = filamentObj.clumpsObj.centers               # Clump centers in original coordinates
+    connected_ids_dict = filamentObj.clumpsObj.connected_ids_dict  # Dictionary of connected clumps
+    clump_coords_dict = filamentObj.clumpsObj.clump_coords_dict    # Pixel coordinates of each clump
+
+    # Extract filament coordinates and create a centered local data cube
+    filament_coords, filament_item, data_wcs_item, regions_data_T, start_coords, filament_item_mask_2D, lb_area = \
+        Filament_Coords(origin_data, regions_data, data_wcs, clump_coords_dict, clumps_id)
+
+    # Convert clump centers to local coordinate system and reorder to (l,b,v)
+    for index in clumps_id:
+        centers_LBV.append((centers[index] - start_coords)[::-1])
+    centers_item_LBV = np.array(centers_LBV)
+
+    # Build a weighted graph and its minimum spanning tree based on the filament substructure
+    Graph, Tree = Graph_Infor_SubStructure(
+        filament_item,filament_item_mask_2D,centers_item_LBV,clumps_id,connected_ids_dict,WeightV)
+
+    # Recursively extract main paths (backbone and branches) from the MST
+    max_path_record, max_edges_record = Get_Max_Path_Recursion(
+        filament_item,centers_item_LBV,max_path_record,max_edges_record,Graph,Tree,Tree)
+
+    # Update and sort the path records by length and connectivity
+    max_path_record = Update_Max_Path_Record(max_path_record)
+
+    # Return the filament subcube, MST, local clump centers, and main paths
+    return filament_item, Tree, centers_item_LBV, max_path_record
 
 
 def Extend_Skeleton_Coords(skeleton_coords, filament_mask_2D):
@@ -1140,7 +1216,7 @@ def Profile_Builder(image, mask, point, derivative, shift=True, fold=False):
     peak = np.around([xpeak, ypeak]).astype(int)
     com = np.array([xcom, ycom])
     
-    return final_dist, image_line_T, peak, (start, end), final_dist_com, com
+    return final_dist, image_line_T, peak, (start, end), final_dist_com, com, coords_total
 
 
 def Get_Sub_Mask(point, regions_data, related_ids_T, connected_ids_dict, clump_coords_dict, start_coords):
@@ -1293,6 +1369,10 @@ def Cal_Dictionary_Cuts(SampInt, CalSub, regions_data, related_ids_T, connected_
                 # Store center of mass information
                 dictionary_cuts['distance_com'].append(profile[4])
                 dictionary_cuts['plot_coms'].append(profile[5])
+
+                # Store profile coords information
+                dictionary_cuts['coords_total'].append(profile[6])
+                
             else:
                 # Remove points that are out of bounds
                 points_updated.remove(points[point_id].tolist())
@@ -1341,7 +1421,7 @@ def Update_Dictionary_Cuts(dictionary_cuts, start_coords):
 
 
 def Get_Common_Skeleton(filament_clumps_id, related_ids_T, max_path_i, max_path_used, skeleton_coords_record, \
-                        start_coords, clump_coords_dict):
+                        start_coords, clump_coords_dict, centers):
     """
     Find a common skeleton segment between different branches of a filament.
     
@@ -1375,14 +1455,15 @@ def Get_Common_Skeleton(filament_clumps_id, related_ids_T, max_path_i, max_path_
     common_clump_id = None
     common_sc_item = None
     subpart_id_used = None
+    common_path_id = -1
     
     # Only look for common parts if there's more than one path
     if len(max_path_used) != 1:
         common_path_id = -1
         break_logic = False
-        
         # Try different subparts, starting from the most recent
-        for subpart_id_used in np.int32(np.linspace(len(max_path_used) - 2, 0, len(max_path_used) - 1)):
+        # for subpart_id_used in np.int32(np.linspace(len(max_path_used) - 2, 0, len(max_path_used) - 1)):
+        for subpart_id_used in np.int32(np.linspace(0,len(max_path_used) - 2, len(max_path_used) - 1)):
             # Look for a node that appears in both the current path and a previous path
             for max_path_ii in max_path_i:
                 if max_path_ii in max_path_used[subpart_id_used]:
@@ -1393,8 +1474,7 @@ def Get_Common_Skeleton(filament_clumps_id, related_ids_T, max_path_i, max_path_
                 break
         
         # Get the clump ID for the common node
-        common_clump_id = filament_clumps_id[common_path_id]
-        
+        common_clump_id = filament_clumps_id[common_path_id]        
         # Get the skeleton coordinates for the subpart containing the common node
         skeleton_coords_i = skeleton_coords_record[subpart_id_used]
         
@@ -1416,12 +1496,20 @@ def Get_Common_Skeleton(filament_clumps_id, related_ids_T, max_path_i, max_path_
             third_len = len(common_skeleton_coords) // 3 + 1
             common_skeleton_coords = common_skeleton_coords[third_len:2 * third_len]
             common_sc_item = common_skeleton_coords - start_coords[1:]
+        if len(common_skeleton_coords) == 0:
+            common_sc_item = np.int32(np.around([centers[common_clump_id][1:] - start_coords[1:]]))
     
     # Only use common parts if they connect to the ends of the filament
-    if common_clump_id not in related_ids_T[:1] and common_clump_id not in related_ids_T[-1:]:
-        common_sc_item = None
+    # if common_clump_id not in related_ids_T[:1] and common_clump_id not in related_ids_T[-1:]:
+    #     common_sc_item = None
+
+    sub_centers_item = []
+    for max_path_ii in max_path_i:
+        if max_path_ii != common_path_id:
+            sub_centers_item.append(centers[filament_clumps_id[max_path_ii]][1:] - start_coords[1:])
+    sub_centers_item = np.int32(np.around(sub_centers_item))
     
-    return common_clump_id, common_sc_item
+    return common_clump_id, common_sc_item, sub_centers_item
 
 
 def Update_Max_Path_Record(max_path_record):
@@ -1487,252 +1575,381 @@ def Update_Max_Path_Record(max_path_record):
 
 def Trim_Skeleton_Coords_2D(skeleton_coords_2D, SmallSkeleton=6):
     """
-    Trim and clean up skeleton coordinates by removing redundancies and loops.
-    
-    This function removes overlapping or redundant points in the skeleton and
-    ensures it forms a clean, non-branching path through the filament.
-    
-    Parameters:
-    -----------
-    skeleton_coords_2D : ndarray
-        Input skeleton coordinates
-    SmallSkeleton : int
-        Small skeleton threshold
-        
-    Returns:
-    --------
-    coords : ndarray
-        Trimmed skeleton coordinates
+    Trim and clean up skeleton coordinates so that every 3x3 window
+    contains at most 3 points, while preserving connectivity as much as possible.
+
+    Parameters
+    ----------
+    skeleton_coords_2D : ndarray of shape (N, 2)
+        Input 2D skeleton coordinates.
+    SmallSkeleton : int, optional
+        If the skeleton contains no more than this number of points,
+        it will be treated as a small skeleton and returned directly.
+
+    Returns
+    -------
+    sorted_skeleton_coords : ndarray
+        Trimmed and sorted skeleton coordinates.
     small_sc : bool
-        Whether skeleton is small
+        Whether the resulting skeleton is considered small.
     """
-    
+
+    SQRT2_THRESH2 = 2.0 + 1e-12  # squared threshold for 8-neighborhood
+
+    def build_adj(coords):
+        """
+        Build an 8-neighborhood adjacency matrix.
+
+        Two points are considered connected if their Euclidean distance
+        is <= sqrt(2), i.e. horizontally, vertically, or diagonally adjacent.
+        """
+        n = len(coords)
+        if n == 0:
+            return np.zeros((0, 0), dtype=bool)
+
+        diff = coords[:, None, :] - coords[None, :, :]
+        dist2 = np.sum(diff * diff, axis=2)
+        adj = (dist2 <= SQRT2_THRESH2) & (dist2 > 0)
+        return adj
+
     def is_connected(coords):
-        """Robust connectivity check"""
-        if len(coords) < 2:
+        """
+        Check whether all points form a single connected component.
+        """
+        n = len(coords)
+        if n < 2:
             return True
-        distances = cdist(coords, coords)
-        adj = distances <= np.sqrt(2) + 1e-6
-        np.fill_diagonal(adj, False)
-        
-        visited = set([0])
-        queue = deque([0])
-        while queue:
-            current = queue.popleft()
-            for i in np.where(adj[current])[0]:
-                if i not in visited:
-                    visited.add(i)
-                    queue.append(i)
-        return len(visited) == len(coords)
-    
-    def find_main_path_with_priorities(coords):
-        """Find main skeleton path and assign priorities"""
-        if len(coords) < 3:
-            return list(range(len(coords))), np.ones(len(coords))
-        
-        distances = cdist(coords, coords)
-        adj_matrix = distances <= 2 #np.sqrt(2) + 1e-6
-        np.fill_diagonal(adj_matrix, False)
-        
-        # Find endpoints (points with few neighbors)
-        neighbor_counts = np.sum(adj_matrix, axis=1)
-        endpoints = np.where(neighbor_counts <= 2)[0]
-        
-        if len(endpoints) < 2:
-            # Use furthest apart points as endpoints
-            max_dist = 0
-            start_idx, end_idx = 0, len(coords)-1
-            for i in range(len(coords)):
-                for j in range(i+1, len(coords)):
-                    if distances[i, j] > max_dist:
-                        max_dist = distances[i, j]
-                        start_idx, end_idx = i, j
+
+        adj = build_adj(coords)
+        visited = np.zeros(n, dtype=bool)
+        q = deque([0])
+        visited[0] = True
+
+        while q:
+            cur = q.popleft()
+            neighbors = np.where(adj[cur])[0]
+            for nb in neighbors:
+                if not visited[nb]:
+                    visited[nb] = True
+                    q.append(nb)
+
+        return visited.all()
+
+    def build_grid_and_index(coords):
+        """
+        Build a binary occupancy grid and a mapping from each grid cell
+        to the coordinate indices located at that cell.
+
+        Returns
+        -------
+        grid : ndarray
+            Binary occupancy grid.
+        cell_to_indices : dict
+            Maps (gx, gy) -> list of point indices.
+        x_min, y_min : int
+            Coordinate offsets used to map original coordinates into grid space.
+        """
+        xs = coords[:, 0]
+        ys = coords[:, 1]
+
+        x_min, x_max = xs.min(), xs.max()
+        y_min, y_max = ys.min(), ys.max()
+
+        w = x_max - x_min + 1
+        h = y_max - y_min + 1
+
+        grid = np.zeros((w, h), dtype=np.uint8)
+        cell_to_indices = {}
+
+        for idx, (x, y) in enumerate(coords):
+            gx = x - x_min
+            gy = y - y_min
+            grid[gx, gy] = 1
+            cell_to_indices.setdefault((gx, gy), []).append(idx)
+
+        return grid, cell_to_indices, x_min, y_min
+
+    def integral_image(grid):
+        """
+        Build the integral image for fast box-sum queries.
+        """
+        return grid.cumsum(axis=0).cumsum(axis=1)
+
+    def rect_sum(ii, x0, y0, x1, y1):
+        """
+        Compute the sum inside rectangle [x0:x1, y0:y1] inclusive
+        using the integral image.
+        """
+        total = ii[x1, y1]
+        if x0 > 0:
+            total -= ii[x0 - 1, y1]
+        if y0 > 0:
+            total -= ii[x1, y0 - 1]
+        if x0 > 0 and y0 > 0:
+            total += ii[x0 - 1, y0 - 1]
+        return total
+
+    def find_violation_windows(coords, box_size=3, max_points=3):
+        """
+        Enumerate all box_size x box_size windows and return the violating ones.
+
+        Each returned item is:
+            (x0, y0, idxs)
+
+        where:
+        - x0, y0 are the lower-left corner in original coordinate space
+        - idxs are the indices of points inside that window
+        """
+        if len(coords) == 0:
+            return []
+
+        grid, cell_to_indices, x_min, y_min = build_grid_and_index(coords)
+        ii = integral_image(grid)
+
+        w, h = grid.shape
+        k = box_size
+        violations = []
+
+        if w < k or h < k:
+            return violations
+
+        for gx0 in range(w - k + 1):
+            gx1 = gx0 + k - 1
+            for gy0 in range(h - k + 1):
+                gy1 = gy0 + k - 1
+                count = rect_sum(ii, gx0, gy0, gx1, gy1)
+
+                if count > max_points:
+                    idxs = []
+                    for gx in range(gx0, gx1 + 1):
+                        for gy in range(gy0, gy1 + 1):
+                            idxs.extend(cell_to_indices.get((gx, gy), []))
+
+                    violations.append((gx0 + x_min, gy0 + y_min, np.array(idxs, dtype=int)))
+
+        return violations
+
+    def find_main_path_priorities(coords):
+        """
+        Assign priorities to points.
+
+        Priority rules:
+        - Points on the main path get a large bonus.
+        - Points with larger degree get slightly higher priority.
+        - Lower-priority points are preferred for removal.
+        """
+        n = len(coords)
+        if n <= 2:
+            return np.full(n, 100.0)
+
+        adj = build_adj(coords)
+        degree = np.sum(adj, axis=1)
+
+        # Endpoints are points with degree <= 1
+        endpoints = np.where(degree <= 1)[0]
+
+        # Choose main path endpoints:
+        # prefer the farthest pair among endpoints;
+        # otherwise use the farthest pair among all points.
+        if len(endpoints) >= 2:
+            ep_coords = coords[endpoints]
+            diff = ep_coords[:, None, :] - ep_coords[None, :, :]
+            dist2 = np.sum(diff * diff, axis=2)
+            i, j = np.unravel_index(np.argmax(dist2), dist2.shape)
+            start_idx, end_idx = endpoints[i], endpoints[j]
         else:
-            start_idx, end_idx = endpoints[0], endpoints[-1]
-        
-        # Build path from start to end
-        path = [start_idx]
-        current = start_idx
-        visited = {start_idx}
-        
-        while current != end_idx and len(path) < len(coords):
-            neighbors = np.where(adj_matrix[current])[0]
-            unvisited_neighbors = [n for n in neighbors if n not in visited]
-            
-            if not unvisited_neighbors:
-                break
-                
-            # Choose neighbor closest to end point
-            best_neighbor = min(unvisited_neighbors, 
-                              key=lambda n: distances[n, end_idx])
-            path.append(best_neighbor)
-            visited.add(best_neighbor)
-            current = best_neighbor
-        
-        # Assign priority scores (main path gets higher scores)
-        priorities = np.zeros(len(coords))
-        for i, idx in enumerate(path):
-            priorities[idx] = len(path) - i + 10  # Boost main path points
-        
-        # Give remaining points lower priority based on connectivity
-        for i in range(len(coords)):
-            if priorities[i] == 0:
-                priorities[i] = neighbor_counts[i]
-        
-        return path, priorities
-    
-    def get_box_neighbors(center_coord, coords, box_size):
-        """Get neighbors within box"""
-        half = box_size // 2
-        neighbors = []
-        for i, coord in enumerate(coords):
-            if (abs(coord[0] - center_coord[0]) <= half and 
-                abs(coord[1] - center_coord[1]) <= half):
-                neighbors.append(i)
-        return neighbors
-    
+            diff = coords[:, None, :] - coords[None, :, :]
+            dist2 = np.sum(diff * diff, axis=2)
+            start_idx, end_idx = np.unravel_index(np.argmax(dist2), dist2.shape)
+
+        # BFS to recover one main path from start_idx to end_idx
+        parent = {start_idx: -1}
+        q = deque([start_idx])
+
+        while q and end_idx not in parent:
+            cur = q.popleft()
+            for nb in np.where(adj[cur])[0]:
+                if nb not in parent:
+                    parent[nb] = cur
+                    q.append(nb)
+
+        main_path = set()
+        if end_idx in parent:
+            cur = end_idx
+            while cur != -1:
+                main_path.add(cur)
+                cur = parent[cur]
+
+        priorities = degree.astype(float)
+        for idx in main_path:
+            priorities[idx] += 100.0
+
+        return priorities
+
+    def choose_best_point_to_remove(coords, idxs_in_window, SmallSkeleton):
+        """
+        Choose the best point to remove from one violating window.
+
+        Selection criteria:
+        1. The skeleton must remain connected after removal.
+        2. The total number of violating windows should be minimized.
+        3. Lower-priority points are preferred for removal.
+        """
+        priorities = find_main_path_priorities(coords)
+
+        best_idx = None
+        best_score = None
+
+        for idx in idxs_in_window:
+            temp_coords = np.delete(coords, idx, axis=0)
+
+            if len(temp_coords) <= SmallSkeleton:
+                continue
+            if not is_connected(temp_coords):
+                continue
+
+            violation_count = len(find_violation_windows(temp_coords, box_size=3, max_points=3))
+
+            # Smaller score is better:
+            # first reduce violations, then prefer removing lower-priority points
+            score = (violation_count, priorities[idx])
+
+            if best_score is None or score < best_score:
+                best_score = score
+                best_idx = idx
+
+        return best_idx
+
+    def get_connected_components(coords):
+        """
+        Split the coordinate set into connected components.
+        """
+        n = len(coords)
+        if n == 0:
+            return []
+
+        adj = build_adj(coords)
+        visited = np.zeros(n, dtype=bool)
+        components = []
+
+        for i in range(n):
+            if visited[i]:
+                continue
+
+            comp = []
+            q = deque([i])
+            visited[i] = True
+
+            while q:
+                cur = q.popleft()
+                comp.append(cur)
+                for nb in np.where(adj[cur])[0]:
+                    if not visited[nb]:
+                        visited[nb] = True
+                        q.append(nb)
+
+            components.append(comp)
+
+        return components
+
     def find_best_bridge_points(current_coords, original_coords):
-        """Find optimal bridge points for reconnection"""
+        """
+        Try to find missing original points that can reconnect multiple components.
+
+        A candidate bridge point is a removed point from the original skeleton
+        that touches at least two current connected components.
+        """
         if is_connected(current_coords):
             return []
-        
-        # Find disconnected components
-        distances = cdist(current_coords, current_coords)
-        adj = distances <= np.sqrt(2) + 1e-6
-        np.fill_diagonal(adj, False)
-        
-        visited = set()
-        components = []
-        for i in range(len(current_coords)):
-            if i not in visited:
-                component = []
-                stack = [i]
-                while stack:
-                    current = stack.pop()
-                    if current not in visited:
-                        visited.add(current)
-                        component.append(current)
-                        neighbors = np.where(adj[current])[0]
-                        for neighbor in neighbors:
-                            if neighbor not in visited:
-                                stack.append(neighbor)
-                components.append(component)
-        
+
+        components = get_connected_components(current_coords)
         if len(components) <= 1:
             return []
-        
-        # Find missing points that can bridge components
+
         current_set = set(map(tuple, current_coords))
         original_set = set(map(tuple, original_coords))
-        missing_points = [np.array(p) for p in original_set - current_set]
-        
+        missing_points = [np.array(p) for p in (original_set - current_set)]
+
         bridge_candidates = []
-        for missing_point in missing_points:
-            connected_components = set()
-            
-            # Check which components this point connects
-            for comp_idx, component in enumerate(components):
-                for point_idx in component:
-                    dist = np.linalg.norm(current_coords[point_idx] - missing_point)
-                    if dist <= np.sqrt(2) + 1e-6:
-                        connected_components.add(comp_idx)
-                        break
-            
-            if len(connected_components) >= 2:
-                bridge_candidates.append((len(connected_components), missing_point))
-        
-        # Sort by number of components connected (prefer points that connect more)
-        bridge_candidates.sort(reverse=True, key=lambda x: x[0])
-        return [point for _, point in bridge_candidates]
-    
+        for p in missing_points:
+            linked = set()
+
+            for comp_idx, comp in enumerate(components):
+                comp_coords = current_coords[comp]
+                d2 = np.sum((comp_coords - p) ** 2, axis=1)
+
+                if np.any(d2 <= SQRT2_THRESH2):
+                    linked.add(comp_idx)
+
+            if len(linked) >= 2:
+                bridge_candidates.append((len(linked), p))
+
+        # Prefer points that connect more components
+        bridge_candidates.sort(key=lambda x: -x[0])
+        return [p for _, p in bridge_candidates]
+
+    # Return directly for small skeletons
     if len(skeleton_coords_2D) <= SmallSkeleton:
         return skeleton_coords_2D, True
-    
-    original_coords = skeleton_coords_2D.copy()
-    coords = skeleton_coords_2D.copy()
-    
-    # Find main path and priorities
-    main_path, priorities = find_main_path_with_priorities(coords)
-    
-    # Iterative trimming with priority-based removal
-    max_iterations = 20
-    max_3x3 = 3
-    for iteration in range(max_iterations):
-        coords_changed = False
-        points_to_remove = set()
-        
-        # Update priorities after each iteration
-        if iteration > 0:
-            _, priorities = find_main_path_with_priorities(coords)
-        
-        # Check density constraints
-        for i in range(len(coords)):
-            # Check 3x3 neighborhood
-            neighbors_3x3 = get_box_neighbors(coords[i], coords, 3)
-            if len(neighbors_3x3) > max_3x3:
-                excess = len(neighbors_3x3) - max_3x3
-                # Sort by priority (remove lowest priority first)
-                neighbor_priorities = [(priorities[j] if j < len(priorities) else 0, j) 
-                                     for j in neighbors_3x3 if j != i]
-                neighbor_priorities.sort()
-                
-                for _, remove_idx in neighbor_priorities[:excess]:
-                    points_to_remove.add(remove_idx)
-        
-        # Apply removals while checking connectivity
-        final_removals = []
-        for remove_idx in sorted(points_to_remove, reverse=True):
-            temp_coords = np.delete(coords, remove_idx, axis=0)
-            if len(temp_coords) > SmallSkeleton and is_connected(temp_coords):
-                final_removals.append(remove_idx)
-        
-        if final_removals:
-            # Remove points and update priorities
-            for remove_idx in final_removals:
-                coords = np.delete(coords, remove_idx, axis=0)
-                if remove_idx < len(priorities):
-                    priorities = np.delete(priorities, remove_idx)
-            coords_changed = True
-        
-        if not coords_changed:
-            break
-    
-    # Repair connectivity if broken
-    max_repair_attempts = len(coords)
-    for repair_attempt in range(max_repair_attempts):
-        if is_connected(coords):
-            break
-            
-        bridge_points = find_best_bridge_points(coords, original_coords)
-        if not bridge_points:
-            # print("No bridge points found")
-            break
-        
-        # Add bridge points until connected
-        for bridge_point in bridge_points:  # Try up to 5 bridge points
-            test_coords = np.vstack([coords, bridge_point.reshape(1, -1)])
-            # if is_connected(test_coords):
-            coords = test_coords
-            break
-        else:
-            # If no single bridge works, try combinations
-            if len(bridge_points) >= 1:
-                test_coords = np.vstack([coords] + [bp.reshape(1, -1) for bp in bridge_points[:2]])
-                # if is_connected(test_coords):
-                coords = test_coords
-                break
-    
-    # Final fallback
-    # if not is_connected(coords):
-    #     print("Warning: Could not restore full connectivity, using original skeleton")
-    #     coords = original_coords
 
-    # Create a graph from the skeleton coordinates
-    G_sorted_skeleton, T_sorted_skeleton = Graph_Infor_Connected(coords)
-    
-    # Find the longest path through the skeleton
+    # Remove duplicate points first
+    original_coords = np.unique(np.asarray(skeleton_coords_2D, dtype=int), axis=0)
+    coords = original_coords.copy()
+
+    # Iteratively remove points until every 3x3 window contains at most 3 points
+    max_iterations = max(50, len(coords) * 2)
+
+    for _ in range(max_iterations):
+        violations = find_violation_windows(coords, box_size=3, max_points=3)
+        if not violations:
+            break
+
+        # Process the most severe violation first
+        violations.sort(key=lambda item: len(item[2]), reverse=True)
+
+        removed = False
+        for _, _, idxs in violations:
+            remove_idx = choose_best_point_to_remove(coords, idxs, SmallSkeleton)
+            if remove_idx is not None:
+                coords = np.delete(coords, remove_idx, axis=0)
+                removed = True
+                break
+
+        # Stop if no valid removable point can be found
+        if not removed:
+            break
+
+    # If connectivity is broken, try to repair it using original missing points
+    if not is_connected(coords):
+        max_repair_attempts = len(original_coords)
+
+        for _ in range(max_repair_attempts):
+            if is_connected(coords):
+                break
+
+            bridge_points = find_best_bridge_points(coords, original_coords)
+            if not bridge_points:
+                break
+
+            added = False
+            for bp in bridge_points:
+                test_coords = np.vstack([coords, bp.reshape(1, -1)])
+
+                # Only accept a bridge point if it restores/keeps connectivity
+                # and does not re-introduce a 3x3 violation.
+                if is_connected(test_coords):
+                    if len(find_violation_windows(test_coords, box_size=3, max_points=3)) == 0:
+                        coords = test_coords
+                        added = True
+                        break
+
+            if not added:
+                break
+
+    # Keep the original FCFA-based final path extraction
+    G_sorted_skeleton, T_sorted_skeleton = Graph_Infor(coords)
     max_path, max_edges = Get_Max_Path_Weight(T_sorted_skeleton)
-    
+
     sorted_skeleton_coords = coords[max_path]
     small_sc = len(sorted_skeleton_coords) <= SmallSkeleton
     return sorted_skeleton_coords, small_sc
@@ -1812,76 +2029,6 @@ def Fill_Mask_Holes(fil_mask, max_hole_size=4):
     contour_data = fil_mask_dilation * ~fil_mask_erosion
     
     return filtered_mask, contour_data
-
-
-def Get_Max_Path_Intensity_Weighted(fil_mask, mask_coords, Tree, common_mask_coords_id=None):
-    """
-    Find the maximum intensity-weighted path through a mask.
-    
-    This function identifies the longest path through a mask, with preference for
-    high-intensity regions. It can either find a path between endpoints or through
-    specified common coordinates.
-    
-    Parameters:
-    -----------
-    fil_mask : ndarray
-        Binary mask of the filament
-    mask_coords : ndarray
-        Coordinates of all points in the mask
-    Tree : networkx.Graph
-        Minimum spanning tree connecting mask points
-    common_mask_coords_id : list, optional
-        List of node IDs that should be included in the path
-        
-    Returns:
-    --------
-    max_path : list
-        List of node indices forming the maximum intensity-weighted path
-    max_edges : list
-        List of edge pairs (node1, node2) in the path
-    """
-    # Fill holes and get contour
-    fil_mask, contour_data = Fill_Mask_Holes(fil_mask)
-    
-    # Find nodes that are on the contour and have degree 1 (endpoints)
-    degree1_nodes = [node for node in Tree.nodes if Tree.degree(node) == 1 and \
-                     contour_data[mask_coords[node][0], mask_coords[node][1]]]
-    
-    paths_and_weights = []
-    
-    # If common coordinates are specified, find paths through them
-    if type(common_mask_coords_id) != type(None) and len(common_mask_coords_id) > 0:
-        for i in common_mask_coords_id:
-            for j in range(len(degree1_nodes)):
-                # Find path from common coordinate to endpoint
-                path = nx.shortest_path(Tree, i, degree1_nodes[j])
-                path_weight = 0
-                
-                # Calculate path weight (sum of inverse edge weights)
-                for k in range(len(path) - 1):
-                    if Tree[path[k]][path[k + 1]]['weight'] != 0:
-                        path_weight += 1 / Tree[path[k]][path[k + 1]]['weight']
-                
-                paths_and_weights.append((path, path_weight))
-    else:
-        # Otherwise, find paths between all pairs of endpoints
-        for i in range(len(degree1_nodes) - 1):
-            for j in range(i + 1, len(degree1_nodes)):
-                # Find path between endpoints
-                path = nx.shortest_path(Tree, degree1_nodes[i], degree1_nodes[j])
-                path_weight = 0
-                
-                # Calculate path weight (sum of inverse edge weights)
-                for k in range(len(path) - 1):
-                    if Tree[path[k]][path[k + 1]]['weight'] != 0:
-                        path_weight += 1 / Tree[path[k]][path[k + 1]]['weight']
-                
-                paths_and_weights.append((path, path_weight))
-    
-    # Find the path with maximum weight
-    max_weight, max_path, max_edges = Search_Max_Path_And_Edges(paths_and_weights)
-    
-    return max_path, max_edges
 
 
 def Get_Max_Path_Intensity_Weighted_Fast(fil_mask, mask_coords, Tree, clump_numbers):
@@ -1989,7 +2136,95 @@ def Get_Max_Path_Intensity_Weighted_Fast(fil_mask, mask_coords, Tree, clump_numb
     return max_path_2, max_edges_2
 
 
-def Get_Single_Filament_Skeleton_Weighted(fil_image, fil_mask, clump_numbers, common_sc_item=None, SmallSkeleton=6):
+def Get_Max_Path_Intensity_Weighted(fil_mask, mask_coords, Tree, common_mask_coords_id=None,common_mask_coords_centers_id=None):
+    """
+    Find the maximum intensity-weighted path through a mask.
+    
+    This function identifies the longest path through a mask, with preference for
+    high-intensity regions. It can either find a path between endpoints or through
+    specified common coordinates.
+    
+    Parameters:
+    -----------
+    fil_mask : ndarray
+        Binary mask of the filament
+    mask_coords : ndarray
+        Coordinates of all points in the mask
+    Tree : networkx.Graph
+        Minimum spanning tree connecting mask points
+    common_mask_coords_id : list, optional
+        List of node IDs that should be included in the path
+        
+    Returns:
+    --------
+    max_path : list
+        List of node indices forming the maximum intensity-weighted path
+    max_edges : list
+        List of edge pairs (node1, node2) in the path
+    """
+    # Fill holes and get contour
+    fil_mask, contour_data = Fill_Mask_Holes(fil_mask)
+    
+    # Find nodes that are on the contour and have degree 1 (endpoints)
+    degree1_nodes = [node for node in Tree.nodes if Tree.degree(node) == 1 and \
+                     contour_data[mask_coords[node][0], mask_coords[node][1]]]
+    
+    paths_and_weights = []
+    
+    # If common coordinates are specified, find paths through them
+    if type(common_mask_coords_id) != type(None) and len(common_mask_coords_id) > 0:
+        for i in common_mask_coords_id:
+            for j in range(len(degree1_nodes)):
+                # Find path from common coordinate to endpoint
+                path = nx.shortest_path(Tree, i, degree1_nodes[j])
+                path_weight = 0
+                
+                # Calculate path weight (sum of inverse edge weights)
+                for k in range(len(path) - 1):
+                    if Tree[path[k]][path[k + 1]]['weight'] != 0:
+                        path_weight += 1 / Tree[path[k]][path[k + 1]]['weight']
+                        
+                add_logic = True
+                for k in range(len(common_mask_coords_centers_id)):
+                    # print(common_mask_coords_centers_id[i])
+                    if common_mask_coords_centers_id[k] not in path:
+                        add_logic = False
+                if add_logic:
+                    paths_and_weights.append((path, path_weight))
+        if len(paths_and_weights) == 0:
+            for i in common_mask_coords_id:
+                for j in range(len(degree1_nodes)):
+                    # Find path from common coordinate to endpoint
+                    path = nx.shortest_path(Tree, i, degree1_nodes[j])
+                    path_weight = 0
+                    
+                    # Calculate path weight (sum of inverse edge weights)
+                    for k in range(len(path) - 1):
+                        if Tree[path[k]][path[k + 1]]['weight'] != 0:
+                            path_weight += 1 / Tree[path[k]][path[k + 1]]['weight']
+
+                    paths_and_weights.append((path, path_weight))
+    else:
+        # Otherwise, find paths between all pairs of endpoints
+        for i in range(len(degree1_nodes) - 1):
+            for j in range(i + 1, len(degree1_nodes)):
+                # Find path between endpoints
+                path = nx.shortest_path(Tree, degree1_nodes[i], degree1_nodes[j])
+                path_weight = 0
+                
+                # Calculate path weight (sum of inverse edge weights)
+                for k in range(len(path) - 1):
+                    if Tree[path[k]][path[k + 1]]['weight'] != 0:
+                        path_weight += 1 / Tree[path[k]][path[k + 1]]['weight']
+                paths_and_weights.append((path, path_weight))
+    
+    # Find the path with maximum weight
+    max_weight, max_path, max_edges = Search_Max_Path_And_Edges(paths_and_weights)
+    
+    return max_path, max_edges
+
+
+def Get_Single_Filament_Skeleton_Weighted(fil_image, fil_mask, clump_numbers, common_sc_item=None, sub_centers_item=None, SmallSkeleton=6):
     """
     Extract an intensity-weighted skeleton from a filament mask.
     
@@ -2034,6 +2269,7 @@ def Get_Single_Filament_Skeleton_Weighted(fil_image, fil_mask, clump_numbers, co
     # Create a graph with edges between neighboring pixels
     Graph_find_skeleton = nx.Graph()
     common_mask_coords_id = []
+    common_mask_coords_centers_id = []
     
     # Add edges with weights inversely proportional to intensity
     for i, j in zip(mask_coords_in_dm[0], mask_coords_in_dm[1]):
@@ -2051,28 +2287,32 @@ def Get_Single_Filament_Skeleton_Weighted(fil_image, fil_mask, clump_numbers, co
         if CalSubSK:
             if tuple(mask_coords[i]) in map(tuple, common_sc_item):
                 common_mask_coords_id.append(i)
-    
+            if tuple(mask_coords[i]) in map(tuple, sub_centers_item):
+                common_mask_coords_centers_id.append(i)
+                
     # Create unique list of common coordinate IDs
     if CalSubSK:
         common_mask_coords_id = list(set(common_mask_coords_id))
+        common_mask_coords_centers_id = list(set(common_mask_coords_centers_id))
     else:
         common_mask_coords_id = None
+        common_mask_coords_centers_id = None
     
     # Find minimum spanning tree
     Tree = nx.minimum_spanning_tree(Graph_find_skeleton)
     
     # Find the longest path through the tree
     if clump_numbers < 100 or CalSubSK:
-        max_path, max_edges = Get_Max_Path_Intensity_Weighted(fil_mask, mask_coords, Tree, common_mask_coords_id)
+        max_path, max_edges = Get_Max_Path_Intensity_Weighted(fil_mask, mask_coords, Tree, \
+                                                              common_mask_coords_id,common_mask_coords_centers_id)
     else:
         max_path, max_edges = Get_Max_Path_Intensity_Weighted_Fast(fil_mask, mask_coords, Tree, clump_numbers)
-    
+
     # Extract coordinates for the maximum path
     skeleton_coords_2D = mask_coords[max_path]
-    
+        
     # Trim and refine the skeleton
     skeleton_coords_2D, small_sc = Trim_Skeleton_Coords_2D(skeleton_coords_2D, SmallSkeleton)
-    
     return skeleton_coords_2D, small_sc
 
 
