@@ -203,22 +203,22 @@ class FilamentInfor(object):
         clump_coords_dict = self.clumpsObj.clump_coords_dict
         filament_coords = self.filament_coords
 
-        filament_centers_LBV = []
+        filament_centers_LB = []
         max_path_record = []
         max_edges_record = []
 
         for index in filament_clumps_id:
-            filament_centers_LBV.append([centers[index][1], centers[index][0]])
-        sorted_id = sorted(range(len(filament_centers_LBV)), key=lambda k: filament_centers_LBV[k], reverse=False)
-        filament_centers_LBV = (np.array(filament_centers_LBV)[sorted_id])
-        filament_clumps_id = np.array(filament_clumps_id)[sorted_id]
+            filament_centers_LB.append([centers[index][1], centers[index][0]])
+        filament_centers_LB = np.array(filament_centers_LB)
+        filament_clumps_id = np.array(filament_clumps_id)
+        self.filament_centers_LB = filament_centers_LB
 
         filament_mask_2D = np.zeros((regions_data.shape[0], regions_data.shape[1]), dtype=np.int16)
         filament_mask_2D[filament_coords[:, 0], filament_coords[:, 1]] = 1
         fil_mask = filament_mask_2D.astype(bool)
-        Graph, Tree = FCFA.Graph_Infor_SubStructure(origin_data, fil_mask, filament_centers_LBV, filament_clumps_id, \
+        Graph, Tree = FCFA.Graph_Infor_SubStructure(origin_data, fil_mask, filament_centers_LB, filament_clumps_id, \
                                                     self.clumpsObj.connected_ids_dict)
-        max_path_record, max_edges_record = FCFA.Get_Max_Path_Recursion(origin_data, filament_centers_LBV, \
+        max_path_record, max_edges_record = FCFA.Get_Max_Path_Recursion(origin_data, filament_centers_LB, \
                                                                         max_path_record, max_edges_record, Graph, Tree, Tree)
         max_path_record = FCFA.Update_Max_Path_Record(max_path_record)
 
@@ -257,7 +257,7 @@ class FilamentInfor(object):
                         print('Please choose the skeleton_type between Morphology and Intensity')
 
                     skeleton_coords_record.append(skeleton_coords_2D + start_coords)
-                    if not small_sc:
+                    if not small_sc or len(max_path_record) == 1 or subpart_id == 0:
                         #                         skeleton_coords_record.append(skeleton_coords_2D+start_coords[1:])
                         skeleton_coords_2D = skeleton_coords_2D + np.random.random(skeleton_coords_2D.shape) / 10000
                         dictionary_cuts = FCFA.Cal_Dictionary_Cuts(SampInt, CalSub, regions_data_T, related_ids_T, \

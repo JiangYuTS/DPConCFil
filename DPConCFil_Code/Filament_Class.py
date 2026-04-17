@@ -319,6 +319,7 @@ class FilamentInfor(object):
         self.filament_regions_data = filament_regions_data
 
         return filament_infor_all
+        
 
     def Get_Item_Dictionary_Cuts(self, filament_clumps_id, dictionary_cuts=None, SampInt=1, Substructure=False, WeightV=True):
         """
@@ -368,12 +369,14 @@ class FilamentInfor(object):
         max_path_record = []
         max_edges_record = []
     
+        filament_coords, filament_item, data_wcs_item, regions_data_T, start_coords, filament_item_mask_2D, lb_area = \
+            FCFA.Filament_Coords(origin_data, regions_data, data_wcs, clump_coords_dict, filament_clumps_id)
+    
         # Convert clump center coordinates to LBV format and sort them
         for index in filament_clumps_id:
-            filament_centers_LBV.append([centers[index][2], centers[index][1], centers[index][0]])
-        sorted_id = sorted(range(len(filament_centers_LBV)), key=lambda k: filament_centers_LBV[k], reverse=False)
-        filament_centers_LBV = (np.array(filament_centers_LBV)[sorted_id])
-        filament_clumps_id = np.array(filament_clumps_id)[sorted_id]
+            filament_centers_LBV.append((centers[index] - start_coords)[::-1])
+        filament_centers_LBV = np.array(filament_centers_LBV)
+        filament_clumps_id = np.array(filament_clumps_id)
         self.filament_centers_LBV = filament_centers_LBV
     
         # Create 2D mask of the filament
@@ -382,13 +385,14 @@ class FilamentInfor(object):
         fil_mask = filament_mask_2D.astype(bool)
         
         # Build graph and tree for substructure analysis
-        Graph, Tree = FCFA.Graph_Infor_SubStructure(origin_data, fil_mask, filament_centers_LBV, filament_clumps_id, \
+        
+        Graph, Tree = FCFA.Graph_Infor_SubStructure(filament_item, fil_mask, filament_centers_LBV, filament_clumps_id, \
                                                     self.clumpsObj.connected_ids_dict,WeightV)
         self.graph_substructure = Graph
         self.tree_substructure = Tree
     
         # Recursively find maximum paths through the graph
-        max_path_record, max_edges_record = FCFA.Get_Max_Path_Recursion(origin_data, filament_centers_LBV, \
+        max_path_record, max_edges_record = FCFA.Get_Max_Path_Recursion(filament_item, filament_centers_LBV, \
                                                                         max_path_record, max_edges_record, Graph, Tree, Tree)
         max_path_record = FCFA.Update_Max_Path_Record(max_path_record)
     
@@ -412,8 +416,7 @@ class FilamentInfor(object):
                 if type(dictionary_cuts) != type(None) and len(related_ids_T) > 0:
                     # Get coordinates and data for this substructure
                     filament_coords, filament_item, data_wcs_item, regions_data_T, start_coords, filament_item_mask_2D, lb_area = \
-                        FCFA.Filament_Coords(origin_data, regions_data, data_wcs, clump_coords_dict, related_ids_T,
-                                             CalSub)
+                        FCFA.Filament_Coords(origin_data, regions_data, data_wcs, clump_coords_dict, related_ids_T, CalSub)
     
                     # Create 2D projection and mask
                     fil_image = filament_item.sum(0)
@@ -429,7 +432,6 @@ class FilamentInfor(object):
                         skeleton_coords_2D, filament_skeleton, all_skeleton_coords = FCFA.Get_Single_Filament_Skeleton(
                             fil_mask)
                     elif SkeletonType == 'Intensity':
-                        all_skeleton_coords = None
                         clumps_number = len(related_ids_T)
                         skeleton_coords_2D, small_sc = FCFA.Get_Single_Filament_Skeleton_Weighted(fil_image, fil_mask, \
                                                                 clumps_number,common_sc_item,sub_centers_item,SmallSkeleton)
@@ -440,7 +442,7 @@ class FilamentInfor(object):
                     skeleton_coords_record.append(skeleton_coords_2D + start_coords[1:])
                     
                     # Calculate dictionary cuts if the skeleton is not too small
-                    if not small_sc:
+                    if not small_sc or len(max_path_record) == 1 or subpart_id == 0:
                         # Add small random numbers to avoid exact coincidence of coordinates
                         skeleton_coords_2D = skeleton_coords_2D + np.random.random(skeleton_coords_2D.shape) / 10000
                         
@@ -492,7 +494,7 @@ class FilamentInfor(object):
         # Store and return the dictionary cuts
         self.dictionary_cuts = dictionary_cuts
         return dictionary_cuts
-        
+            
 
     def Filament_Detect(self, related_ids=None):
         """

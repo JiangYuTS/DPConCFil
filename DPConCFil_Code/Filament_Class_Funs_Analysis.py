@@ -451,8 +451,8 @@ def Graph_Infor_SubStructure(origin_data, filament_mask_2D, filament_centers_LBV
             if filament_clumps_id[j] in neighboring_ids:
                 # Get 2D coordinates for line between clumps
                 line_coords = Get_Line_Coords_2D(points_LB[i], points_LB[j])
-                # Check if line passes through the filament mask
-                mask_2D_ids = filament_mask_2D[line_coords[:, 1], line_coords[:, 0]]
+                # # Check if line passes through the filament mask
+                # mask_2D_ids = filament_mask_2D[line_coords[:, 1], line_coords[:, 0]]
                 
                 # Get 3D coordinates for line between clumps
                 line_coords = Get_Line_Coords_3D(filament_centers_LBV[i], filament_centers_LBV[j])
@@ -460,15 +460,15 @@ def Graph_Infor_SubStructure(origin_data, filament_mask_2D, filament_centers_LBV
                 weight_ij = origin_data[line_coords[:, 2], line_coords[:, 1], line_coords[:, 0]].mean()
                 
                 # Only add edge if line is entirely within the filament
-                if 0 not in mask_2D_ids:
+                # if 0 not in mask_2D_ids:
                     # Weight is spatial distance * velocity difference / intensity
                     # (higher intensity means lower weight = preferred connection)
-                    if weight_v:
-                        weight = dist_matrix[i, j] * np.sqrt(np.abs(points_V[i] - points_V[j])) / weight_ij
-                    else:
-                        weight = dist_matrix[i, j] / weight_ij
-                        # weight = dist_matrix[i, j] / (np.abs(points_V[i] - points_V[j]) * weight_ij)
-                    Graph.add_edge(i, j, weight=weight)
+                if weight_v:
+                    weight = dist_matrix[i, j] * np.sqrt(np.abs(points_V[i] - points_V[j])) / weight_ij
+                else:
+                    weight = dist_matrix[i, j] / weight_ij
+                    # weight = dist_matrix[i, j] / (np.abs(points_V[i] - points_V[j]) * weight_ij)
+                Graph.add_edge(i, j, weight=weight)
     
     # Find the minimum spanning tree
     Tree = nx.minimum_spanning_tree(Graph)
@@ -705,9 +705,15 @@ def Get_Max_Path_Recursion(origin_data, filament_centers_LBV, max_path_record, m
     # Create another copy to remove isolated nodes
     new_T_2 = new_T.copy()
     nodes = nodes_T
+    remove_num = 0
     for node in nodes:
         if sub_degrees[node] == 0:
             new_T_2.remove_node(node)
+            remove_num += 1
+    if remove_num == 0:
+        max_path_record.append(max_path)
+        max_edges_record.append(max_edges)
+        return max_path_record, max_edges_record
 
     # Check if there are still connected components in the remaining graph
     if new_T_2.nodes != 0:
@@ -2136,89 +2142,124 @@ def Get_Max_Path_Intensity_Weighted_Fast(fil_mask, mask_coords, Tree, clump_numb
     return max_path_2, max_edges_2
 
 
-def Get_Max_Path_Intensity_Weighted(fil_mask, mask_coords, Tree, common_mask_coords_id=None,common_mask_coords_centers_id=None):
+def Get_Max_Path_Intensity_Weighted(fil_mask, mask_coords, Tree, common_mask_coords_id=None, common_mask_coords_centers_id=None):
     """
-    Find the maximum intensity-weighted path through a mask.
-    
-    This function identifies the longest path through a mask, with preference for
-    high-intensity regions. It can either find a path between endpoints or through
-    specified common coordinates.
-    
-    Parameters:
-    -----------
+    Get the maximum intensity-weighted path within a filament mask.
+
+    This function searches for the most significant path in the tree built from
+    the filament mask. The path weight is defined as the sum of inverse edge
+    weights, so paths passing through higher-intensity regions are favored.
+
+    Two search modes are supported:
+    1. If ``common_mask_coords_id`` is given, candidate paths are searched from
+       the specified nodes to tree endpoints.
+    2. Otherwise, candidate paths are searched between all endpoint pairs.
+
+    If ``common_mask_coords_centers_id`` is provided, paths passing through the
+    specified center nodes are preferred. If no such path is found, the constraint
+    is relaxed and all valid candidate paths are considered.
+
+    Parameters
+    ----------
     fil_mask : ndarray
-        Binary mask of the filament
+        2D binary mask of the filament.
     mask_coords : ndarray
-        Coordinates of all points in the mask
+        Coordinates of mask nodes, aligned with node IDs in ``Tree``.
     Tree : networkx.Graph
-        Minimum spanning tree connecting mask points
+        Tree structure describing the filament connectivity.
     common_mask_coords_id : list, optional
-        List of node IDs that should be included in the path
-        
-    Returns:
-    --------
+        Node IDs used as constrained starting nodes when searching candidate paths.
+    common_mask_coords_centers_id : list, optional
+        Node IDs of important center positions that candidate paths are preferred
+        to pass through.
+
+    Returns
+    -------
     max_path : list
-        List of node indices forming the maximum intensity-weighted path
+        Node sequence of the maximum intensity-weighted path.
     max_edges : list
-        List of edge pairs (node1, node2) in the path
+        Edge sequence corresponding to ``max_path``.
     """
-    # Fill holes and get contour
+
+    # Fill holes inside the mask and extract the contour map
     fil_mask, contour_data = Fill_Mask_Holes(fil_mask)
     
-    # Find nodes that are on the contour and have degree 1 (endpoints)
-    degree1_nodes = [node for node in Tree.nodes if Tree.degree(node) == 1 and \
-                     contour_data[mask_coords[node][0], mask_coords[node][1]]]
+    # Select endpoint nodes on the filament boundary
+    # These nodes are leaf nodes in the tree and are used as path termini
+    degree1_nodes = [node for node in Tree.nodes if Tree.degree(node) == 1 and 
+                                        contour_data[mask_coords[node][0], mask_coords[node][1]]]
     
     paths_and_weights = []
-    
-    # If common coordinates are specified, find paths through them
-    if type(common_mask_coords_id) != type(None) and len(common_mask_coords_id) > 0:
+
+    # Search paths from the specified common nodes to boundary endpoints
+    if common_mask_coords_id is not None and len(common_mask_coords_id) > 0:
         for i in common_mask_coords_id:
             for j in range(len(degree1_nodes)):
-                # Find path from common coordinate to endpoint
+                # Path from the constrained node to one boundary endpoint
                 path = nx.shortest_path(Tree, i, degree1_nodes[j])
-                path_weight = 0
-                
-                # Calculate path weight (sum of inverse edge weights)
-                for k in range(len(path) - 1):
-                    if Tree[path[k]][path[k + 1]]['weight'] != 0:
-                        path_weight += 1 / Tree[path[k]][path[k + 1]]['weight']
-                        
-                add_logic = True
-                for k in range(len(common_mask_coords_centers_id)):
-                    # print(common_mask_coords_centers_id[i])
-                    if common_mask_coords_centers_id[k] not in path:
-                        add_logic = False
-                if add_logic:
+
+                # First try to keep paths passing through the required center node
+                if common_mask_coords_centers_id[0] in path: 
+                    path_weight = 0
+
+                    # Accumulate inverse edge weights along the path
+                    for k in range(len(path) - 1):
+                        weight = Tree[path[k]][path[k + 1]]['weight']
+                        if weight != 0:
+                            path_weight += 1 / weight
                     paths_and_weights.append((path, path_weight))
+
+        # If no path satisfies the center-node condition, remove this constraint
         if len(paths_and_weights) == 0:
             for i in common_mask_coords_id:
                 for j in range(len(degree1_nodes)):
-                    # Find path from common coordinate to endpoint
                     path = nx.shortest_path(Tree, i, degree1_nodes[j])
                     path_weight = 0
-                    
-                    # Calculate path weight (sum of inverse edge weights)
                     for k in range(len(path) - 1):
-                        if Tree[path[k]][path[k + 1]]['weight'] != 0:
-                            path_weight += 1 / Tree[path[k]][path[k + 1]]['weight']
-
+                        weight = Tree[path[k]][path[k + 1]]['weight']
+                        if weight != 0:
+                            path_weight += 1 / weight
                     paths_and_weights.append((path, path_weight))
+
+    # Search paths between all endpoint pairs
     else:
-        # Otherwise, find paths between all pairs of endpoints
         for i in range(len(degree1_nodes) - 1):
             for j in range(i + 1, len(degree1_nodes)):
-                # Find path between endpoints
+                # Path connecting two boundary endpoints
                 path = nx.shortest_path(Tree, degree1_nodes[i], degree1_nodes[j])
-                path_weight = 0
-                
-                # Calculate path weight (sum of inverse edge weights)
-                for k in range(len(path) - 1):
-                    if Tree[path[k]][path[k + 1]]['weight'] != 0:
-                        path_weight += 1 / Tree[path[k]][path[k + 1]]['weight']
-                paths_and_weights.append((path, path_weight))
-    
-    # Find the path with maximum weight
+
+                # If center nodes are given, keep only paths crossing both ends of the center set
+                if type(common_mask_coords_centers_id) is not type(None):
+                    if common_mask_coords_centers_id[0] in path and common_mask_coords_centers_id[-1] in path:
+                        path_weight = 0
+                        for k in range(len(path) - 1):
+                            weight = Tree[path[k]][path[k + 1]]['weight']
+                            if weight != 0:
+                                path_weight += 1 / weight
+                        paths_and_weights.append((path, path_weight))
+                else:
+                    path_weight = 0
+
+                    # Accumulate inverse edge weights for the full endpoint-to-endpoint path
+                    for k in range(len(path) - 1):
+                        weight = Tree[path[k]][path[k + 1]]['weight']
+                        if weight != 0:
+                            path_weight += 1 / weight
+                    paths_and_weights.append((path, path_weight))
+
+        # If no path satisfies the center-node condition, fall back to all endpoint pairs
+        if len(paths_and_weights) == 0:
+            for i in range(len(degree1_nodes) - 1):
+                for j in range(i + 1, len(degree1_nodes)):
+                    path = nx.shortest_path(Tree, degree1_nodes[i], degree1_nodes[j])
+                    path_weight = 0
+                    for k in range(len(path) - 1):
+                        weight = Tree[path[k]][path[k + 1]]['weight']
+                        if weight != 0:
+                            path_weight += 1 / weight
+                    paths_and_weights.append((path, path_weight))
+
+    # Select the path with the largest accumulated intensity weight
     max_weight, max_path, max_edges = Search_Max_Path_And_Edges(paths_and_weights)
     
     return max_path, max_edges
@@ -2284,20 +2325,23 @@ def Get_Single_Filament_Skeleton_Weighted(fil_image, fil_mask, clump_numbers, co
         Graph_find_skeleton.add_edge(i, j, weight=weight_ij)
         
         # If using common skeleton coordinates, record their IDs
-        if CalSubSK:
-            if tuple(mask_coords[i]) in map(tuple, common_sc_item):
+        if type(common_sc_item) != type(None):
+            if tuple(mask_coords[i]) in map(tuple, common_sc_item) and i not in common_mask_coords_id:
                 common_mask_coords_id.append(i)
-            if tuple(mask_coords[i]) in map(tuple, sub_centers_item):
+        if type(sub_centers_item) != type(None):
+            if tuple(mask_coords[i]) in map(tuple, sub_centers_item) and i not in common_mask_coords_centers_id:
                 common_mask_coords_centers_id.append(i)
-                
+            
     # Create unique list of common coordinate IDs
-    if CalSubSK:
-        common_mask_coords_id = list(set(common_mask_coords_id))
-        common_mask_coords_centers_id = list(set(common_mask_coords_centers_id))
-    else:
+    if type(common_sc_item) == type(None):
         common_mask_coords_id = None
-        common_mask_coords_centers_id = None
     
+    if type(sub_centers_item) == type(None) or len(common_mask_coords_centers_id)==0:
+        common_mask_coords_centers_id = None
+    else:
+        sort_ids = np.array([{tuple(r): i for i, r in enumerate(mask_coords[common_mask_coords_centers_id])}[tuple(row)] for row in sub_centers_item])
+        common_mask_coords_centers_id = np.array(common_mask_coords_centers_id)[sort_ids]
+
     # Find minimum spanning tree
     Tree = nx.minimum_spanning_tree(Graph_find_skeleton)
     
@@ -2313,6 +2357,7 @@ def Get_Single_Filament_Skeleton_Weighted(fil_image, fil_mask, clump_numbers, co
         
     # Trim and refine the skeleton
     skeleton_coords_2D, small_sc = Trim_Skeleton_Coords_2D(skeleton_coords_2D, SmallSkeleton)
+    # print('skeleton_coords_2D:',small_sc, skeleton_coords_2D)
     return skeleton_coords_2D, small_sc
 
 
