@@ -1253,9 +1253,9 @@ def Get_Single_Filament_Skeleton_Weighted(fil_image,fil_mask,clump_numbers,commo
     # Endpoint guidance initialization
     if sub_centers_item is not None:
         neighbor_coords_0 = Generate_Neighbor_coords(
-            sub_centers_item[0], fil_image.shape, range_x=3, range_y=3, step=1)
+            sub_centers_item[0], fil_image.shape, range_x=5, range_y=5)
         neighbor_coords_1 = Generate_Neighbor_coords(
-            sub_centers_item[-1], fil_image.shape, range_x=3, range_y=3, step=1)
+            sub_centers_item[-1], fil_image.shape, range_x=5, range_y=5)
 
     # Add graph edges with intensity-weighted costs
     for i, j in zip(mask_coords_in_dm[0], mask_coords_in_dm[1]):
