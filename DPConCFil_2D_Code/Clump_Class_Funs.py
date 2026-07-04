@@ -215,39 +215,186 @@ def Clump_Items(real_data,regions_data,centers,index,regions_list,clump_coords_d
     connected_ids_dict[index] = connected_centers_id
     return clump_item,center_index,start_coords
 
-def Gaussian_Fit_Infor(origin_data,regions_data,centers,edges,angles):
+
+def Clump_Items_Con(input_data, index, regions_list, output_dicts):
+    """
+    Analyze a single clump and find connected clumps.
+    
+    This function extracts a clump, creates a standardized box around it,
+    and finds neighboring clumps that are connected to it at different
+    structuring element sizes.
+    
+    Parameters:
+    -----------
+    input_data : list
+        List containing the original data and region arrays
+    index : int
+        Index of the clump to analyze
+    regions_list : list
+        List of region properties
+    output_dicts : list
+        List of dictionaries to store output information
+        
+    Returns:
+    --------
+    clump_item : ndarray
+        3D array containing the clump data
+    start_coords : list
+        Starting coordinates of the clump box in the original data
+    output_dicts : list
+        Updated dictionaries with clump coordinates and connectivity information
+    """
+    origin_data, regions_data = input_data[0], input_data[1]
+    clump_coords_dict, connected_ids_dict_lists = output_dicts
+    
+    # Get coordinates of the current clump
+    clump_coords = regions_list[index].coords
+    clump_coords_dict[index] = clump_coords
+    core_x = clump_coords[:, 0]
+    core_y = clump_coords[:, 1]
+    
+    # Find bounding box of the clump
+    x_min = core_x.min()
+    x_max = core_x.max()
+    y_min = core_y.min()
+    y_max = core_y.max()
+    
+    # Create a standardized box around the clump with padding
+    length = np.max([x_max - x_min, y_max - y_min])
+    if np.int32(length*0.1) % 2 == 0:
+        length += np.int32(length*0.1) + 5
+    else:
+        length += np.int32(length*0.1) + 6
+    
+    # Create empty box and position clump in the center
+    clump_item = np.zeros([length, length])
+    start_x = np.int64((length - (x_max - x_min)) / 2)
+    start_y = np.int64((length - (y_max - y_min)) / 2)
+    
+    # Copy clump data to the standardized box
+    clump_item[core_x - x_min + start_x, core_y - y_min + start_y] = origin_data[core_x, core_y]
+    
+    # Calculate starting coordinates in the original data
+    start_coords = [x_min - start_x, y_min - start_y]
+    
+    # Adjust for boundary conditions
+    start_x_for_de = max(x_min - start_x, 0)
+    start_y_for_de = max(y_min - start_y, 0)
+    
+    # Find connected clumps at different structuring element sizes
+    for i in range(3):
+        # Get region data with erosion level i
+        regions_data_erosed = input_data[1+i]
+        
+        # Extract region data around the clump
+        clump_region_box = regions_data_erosed[start_x_for_de:start_x_for_de + length,
+                                               start_y_for_de:start_y_for_de + length]
+        
+        # Create a binary mask of the clump
+        clump_item_region_box = np.zeros_like(clump_region_box)
+        clump_item_region_box[core_x - start_x_for_de, core_y - start_y_for_de] = 1
+        
+        # Dilate the clump mask to find neighboring regions
+        clump_item_region_box_dilated = morphology.dilation(clump_item_region_box, morphology.disk(1))
+        
+        # Find overlapping regions (connected clumps)
+        clump_region_multipled = (clump_item_region_box_dilated - clump_item_region_box) * clump_region_box
+        connected_centers_id = list(set((clump_region_multipled[clump_region_multipled.astype(bool)] - 1).astype(int)))
+        
+        # Store the list of connected clump IDs
+        connected_ids_dict_lists[i][index] = connected_centers_id
+        
+    return clump_item, start_coords, output_dicts
+
+
+def Gaussian_Fit_Infor(input_data, regions_list, centers, edges, angles, fit_flag):
+    """
+    Perform Gaussian fitting on all clumps to refine their parameters.
+    
+    This function processes each clump to:
+    1. Create a standardized box around the clump
+    2. Find connected neighboring clumps
+    3. Perform 2D Gaussian fits on projected data to refine center and angle parameters
+    
+    Parameters:
+    -----------
+    input_data : list
+        List containing original data and region arrays
+    regions_list : list
+        List of region properties
+    centers : list
+        Initial estimates of clump centers
+    edges : list
+        Flags indicating whether clumps touch data edges
+    angles : list
+        Initial estimates of clump orientation angles
+        
+    Returns:
+    --------
+    centers_fited : list
+        Refined clump center positions
+    angles_fited : list
+        Refined clump orientation angles
+    clump_coords_dict : dict
+        Dictionary of clump coordinates
+    connected_ids_dict_lists : list
+        Lists of connected clump IDs at different scales
+    """
     start_1 = time.time()
-    angles_fited = []
+    
+    # Initialize output dictionaries
     clump_coords_dict = {}
-    connected_ids_dict = {}
+    connected_ids_dict_lists = [{},{},{}]
+    output_dicts = [clump_coords_dict, connected_ids_dict_lists]
+    
+    # Create copies to store refined values
     centers_fited = centers.copy()
     angles_fited = angles.copy()
-    regions_data = np.array(regions_data,dtype='int')
-    regions_list = measure.regionprops(regions_data)
-    origin_data_shape = origin_data.shape
+    
+    # Process each clump with progress bar
     for index in tqdm(range(len(centers))):
-        clump_item,center_index,start_coords = \
-            Clump_Items(origin_data,regions_data,centers,index,regions_list,clump_coords_dict,connected_ids_dict)
-        if edges[index] == 0:
+        # Get clump data and connectivity information
+        clump_item, start_coords, output_dicts = Clump_Items_Con(input_data, index, regions_list, output_dicts)
+        
+        # Only fit non-edge clumps (edge clumps may have incomplete data)
+        if edges[index] == 0 and fit_flag:
+            # Project clump to 2D by summing along z-axis
             data = clump_item
-            fit_infor,fit_flag = Gaussian_Fit(data)
+            fit_infor, fit_flag = Gaussian_Fit(data)
+            
+            # If both fits succeeded, update center and angle
             if fit_flag:
                 parameters = fit_infor.x
-                centers_fited_index_x = np.around(parameters[1]+start_coords[0],3)
-                centers_fited_index_y = np.around(parameters[2]+start_coords[1],3)
-                if centers_fited_index_x > 0 and centers_fited_index_x<origin_data_shape[0] and \
-                   centers_fited_index_y > 0 and centers_fited_index_y<origin_data_shape[1]:
-                    centers_fited[index] = [centers_fited_index_x,centers_fited_index_y]
-                    theta = (parameters[5]*180/np.pi)%180
-                    if parameters[3]>parameters[4]:
+                
+                # Check if center is inside the clump
+                centers_fited_index_x = np.int64(np.around(parameters[1] + start_coords[0]))
+                centers_fited_index_y = np.int64(np.around(parameters[2] + start_coords[1]))
+                clump_coords = regions_list[index].coords
+
+                if centers_fited_index_x in clump_coords[:,0] and centers_fited_index_y in clump_coords[:,1]:
+                    
+                    # Calculate refined center in original data coordinates
+                    centers_fited_index_x = np.around(parameters[1] + start_coords[0], 3)
+                    centers_fited_index_y = np.around(parameters[2] + start_coords[1], 3)
+
+                    # Update center coordinates
+                    centers_fited[index] = [centers_fited_index_x, centers_fited_index_y]
+                    
+                    # Calculate orientation angle
+                    theta = (parameters[5] * 180 / np.pi) % 180
+                    if parameters[3] > parameters[4]:
                         theta -= 90
-                    elif parameters[3]<parameters[4] and theta>90:
+                    elif parameters[3] < parameters[4] and theta > 90:
                         theta -= 180
-                    angles_fited[index] = np.around(theta,2)
+                    
+                    # Update angle
+                    angles_fited[index] = np.around(theta, 2)
+    
     end_1 = time.time()
-    delta_time = np.around(end_1-start_1,2)
+    delta_time = np.around(end_1 - start_1, 2)
     print('Fitting Clumps Time:', delta_time)
-    return centers_fited,angles_fited,clump_coords_dict,connected_ids_dict
+    
+    return centers_fited, angles_fited, clump_coords_dict, connected_ids_dict_lists
 
 
 def Get_Data_Ranges_WCS(origin_data,data_wcs):

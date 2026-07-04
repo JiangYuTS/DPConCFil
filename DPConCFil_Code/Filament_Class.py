@@ -534,11 +534,13 @@ class FilamentInfor(object):
         exist_logic = False
         if len(path_items) > 1:
             if not os.path.exists(filament_table_pix_name[:-len(path_items[-1])]):
+                os.makedirs(filament_table_pix_name[:-len(path_items[-1])])
                 print('The path of outcat_name does not exist.')
             else:
                 exist_logic = True
         elif len(path_items) == 1:
             if not os.path.exists(filament_table_pix_name):
+                os.makedirs(filament_table_pix_name)
                 print('The path of outcat_name does not exist.')
             else:
                 exist_logic = True

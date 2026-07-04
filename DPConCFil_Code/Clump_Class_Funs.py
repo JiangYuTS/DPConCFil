@@ -529,9 +529,9 @@ def Gaussian_Fit_Infor(input_data, regions_list, centers, edges, angles, fit_fla
                     
                     # Calculate orientation angle
                     theta = (parameters[5] * 180 / np.pi) % 180
-                    if parameters[3] > parameters[4]:
+                    if np.abs(parameters[3]) > np.abs(parameters[4]):
                         theta -= 90
-                    elif parameters[3] < parameters[4] and theta > 90:
+                    elif np.abs(parameters[3]) < np.abs(parameters[4]) and theta > 90:
                         theta -= 180
                     
                     # Update angle

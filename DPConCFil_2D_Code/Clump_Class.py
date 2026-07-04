@@ -7,6 +7,7 @@ from astropy.table import Table
 from skimage import measure,morphology
 from scipy import optimize
 from tqdm import tqdm
+import os
 
 from FacetClumps.Detect_Files import Detect as DF_FacetClumps
 
@@ -30,6 +31,8 @@ class ClumpInfor(object):
         
         self.data_header = data_header
         self.data_wcs = data_wcs
+        pix_scale_arcmin = data_wcs.proj_plane_pixel_scales()[0].value
+        self.pix_scale_arcmin = pix_scale_arcmin
         self.origin_data = origin_data
         origin_data_shape = origin_data.shape
         self.origin_data_shape = origin_data_shape
@@ -53,43 +56,119 @@ class ClumpInfor(object):
             raise TypeError("Please choose an algorithm or give a mask.")
             
     
-    def Get_Clumps_Infor(self,fit_flag = True):
-        regions_data = fits.getdata(self.mask_name)
-        outcat_table = Table.read(self.outcat_name)
-        outcat_wcs_table = Table.read(self.outcat_wcs_name)
-
-        centers = np.array([outcat_table['Cen2']-1,outcat_table['Cen1']-1]).T
-        peaks = np.array([outcat_table['Peak2']-1,outcat_table['Peak1']-1]).T
-        centers_wcs = np.array([outcat_wcs_table['Cen1'],outcat_wcs_table['Cen2']]).T
-        edges = outcat_table['Edge']
-        angles = outcat_table['Angle']
+   
+    def Get_Clumps_Infor(self, sr_origin=False, fit_flag=True, ErosedK=2):
+        """
+        Extract detailed information about detected clumps from mask data.
         
-        regions_label = measure.label(regions_data>0,connectivity=2)
-        regions = measure.regionprops(regions_label)
-        new_regions,temp_regions_array,rc_dict = Clump_Class_Funs.Build_RC_Dict(peaks,regions_label,regions)
-
-        if fit_flag:
-            centers,angles,clump_coords_dict,connected_ids_dict = \
-                Clump_Class_Funs.Gaussian_Fit_Infor(self.origin_data,regions_data,centers,edges,angles)
-            if self.data_wcs.world_n_dim == 2:
-                cen1, cen2 = self.data_wcs.all_pix2world(centers[:,1], centers[:,0],0)
-                centers_wcs = np.column_stack([np.around(cen1,3), np.around(cen2,3)])
-            elif self.data_wcs.world_n_dim == 3:
-                cen1, cen2, temp_c = self.data_wcs.all_pix2world(centers[:,1], centers[:,0],0,0)
-                centers_wcs = np.column_stack([np.around(cen1,3), np.around(cen2,3)])
-            np.set_printoptions(suppress=True)
+        Parameters:
+        -----------
+        sr_origin : bool
+            If True, generate signal regions using the FacetClumps algorithm;
+            if False, generate signal regions directly from the mask
+        fit_flag : bool
+            If True, perform Gaussian fitting to refine clump properties
+        ErosedK : int
+            Erosion kernel size for morphological operations, controls detail level
+        """
+        # Check if mask file exists
+        if not os.path.exists(self.mask_name):
+            print('The mask file does not exist.')
         else:
-            centers_T,angles_T,clump_coords_dict,connected_ids_dict = \
-                Clump_Class_Funs.Gaussian_Fit_Infor(self.origin_data,regions_data,centers,edges,angles)
-        self.fit_flag = fit_flag
-        self.regions_data = regions_data
-        self.centers = centers
-        self.centers_wcs = centers_wcs
-        self.peaks = peaks
-        self.edges = edges
-        self.angles = angles
-        self.rc_dict = rc_dict
-        self.clump_coords_dict = clump_coords_dict
-        self.connected_ids_dict = connected_ids_dict
-    
+            # Load necessary data
+            origin_data = self.origin_data
+            regions_data = fits.getdata(self.mask_name)  # Load the mask identifying different regions
+            # Load catalog tables with clump information
+            outcat_table = Table.read(self.outcat_name)       # In pixel coordinates
+            outcat_wcs_table = Table.read(self.outcat_wcs_name)  # In world coordinates
+
+            # Extract clump centers, peaks and properties from tables
+            # Note: Adjusting indices by -1 to convert from 1-based to 0-based indexing
+            # The 3 dimensions are typically velocity, latitude, longitude in astronomy
+            centers = np.array([outcat_table['Cen2']-1,outcat_table['Cen1']-1]).T
+            peaks = np.array([outcat_table['Peak2']-1,outcat_table['Peak1']-1]).T
+            centers_wcs = np.array([outcat_wcs_table['Cen1'],outcat_wcs_table['Cen2']]).T
+            edges = outcat_table['Edge']
+            angles = outcat_table['Angle']
+
+            # Get region properties from the mask using scikit-image
+            regions_list = measure.regionprops(regions_data)
+            
+            # Create a list with original and eroded versions of the regions for multi-scale analysis
+            input_data = [origin_data, regions_data]
+            for i in range(2):
+                # Apply morphological erosion to the regions mask using a 2D disk structuring element
+                # This helps isolate the core parts of each clump
+                regions_data_erosed = regions_data * morphology.erosion(regions_data > 0, morphology.disk(ErosedK + i))
+                input_data += [regions_data_erosed]
+            
+            if sr_origin:
+                # Generate signal regions using the FacetClumps algorithm
+                RMS, Threshold = self.parameters[0], self.parameters[1]
+                # Initial signal region detection - creates first pass of regions
+                srs_list_0, srs_array_0 = FacetClumps.FacetClumps_2D_Funs.Get_Regions_FacetClumps(
+                    origin_data, RMS, Threshold, np.array([0]))
+                # Refined signal region detection using the initial regions as input
+                srs_list, srs_array = FacetClumps.FacetClumps_2D_Funs.Get_Regions_FacetClumps(
+                    origin_data, RMS, Threshold, srs_array_0)
+                # Build mapping between regions and clumps
+                new_regions,temp_regions_array,rc_dict = Clump_Class_Funs.Build_RC_Dict(peaks, srs_array, srs_list)
+            else:
+                # Generate signal regions directly from the mask
+                # Label connected regions with unique IDs (connectivity=2 for 2D data)
+                srs_array = measure.label(regions_data > 0, connectivity=2)
+                # Calculate properties of each labeled region
+                srs_list = measure.regionprops(srs_array, intensity_image=origin_data)
+                # Map regions to clumps
+                new_regions,temp_regions_array,rc_dict = Clump_Class_Funs.Build_RC_Dict(peaks, srs_array, srs_list)
+            
+            # Create a dictionary of signal region coordinates for easier access
+            sr_coords_dict = {}
+            for index in range(len(srs_list)):
+                sr_coords = srs_list[index].coords  # Get pixel coordinates for each region
+                sr_coords_dict[index] = sr_coords
+
+            if fit_flag:
+                # Perform Gaussian fitting to refine clump properties
+                # This often produces more accurate centers and shape parameters
+                centers, angles, clump_coords_dict, connected_ids_dict_lists = \
+                    Clump_Class_Funs.Gaussian_Fit_Infor(input_data, regions_list, centers, edges, angles, fit_flag)
+                
+                # Convert refined centers from pixel to world coordinates
+                if self.data_wcs.world_n_dim == 2:
+                    cen1, cen2 = self.data_wcs.all_pix2world(centers[:,1], centers[:,0], 0)
+                    centers_wcs = np.column_stack([np.around(cen1, 3), np.around(cen2, 3)])
+                elif self.data_wcs.world_n_dim == 3:
+                    cen1, cen2, temp_c = self.data_wcs.all_pix2world(centers[:,1], centers[:,0], 0, 0)
+                    centers_wcs = np.column_stack([np.around(cen1, 3), np.around(cen2, 3)])
+                elif self.data_wcs.world_n_dim == 4:
+                    # For 4D WCS (with an additional dimension, often time)
+                    cen1, cen2, cen3, temp_c = self.data_wcs.all_pix2world(centers[:, 1], centers[:, 0], centers[:, 0], 0, 0)
+                    centers_wcs = np.column_stack([np.around(cen1, 3), np.around(cen2, 3)])
+                # centers_wcs[:,2] = (centers_wcs[:,2]*self.data_wcs.wcs.cunit[2]).to(u.km/u.s).value
+                # Ensure floating-point values are displayed without scientific notation
+                np.set_printoptions(suppress=True)
+            else:
+                # If not fitting, still get the clump coordinates and connection information
+                # but don't update the centers and angles
+                centers_T, angles_T, clump_coords_dict, connected_ids_dict_lists = \
+                    Clump_Class_Funs.Gaussian_Fit_Infor(input_data, regions_list, centers, edges, angles, fit_flag)
+            
+            # Store all calculated properties as object attributes for later use
+            self.fit_flag = fit_flag
+            self.regions_data = regions_data
+            self.regions_list = regions_list
+            self.centers = centers
+            self.centers_wcs = centers_wcs
+            self.peaks = peaks
+            self.edges = edges
+            self.angles = angles
+            self.signal_regions_array = srs_array
+            self.signal_regions_list = srs_list
+            self.sr_coords_dict = sr_coords_dict
+            self.rc_dict = rc_dict
+            self.clump_coords_dict = clump_coords_dict
+            self.connected_ids_dict = connected_ids_dict_lists[0]
+            self.connected_ids_dict_lists = connected_ids_dict_lists
+        
     

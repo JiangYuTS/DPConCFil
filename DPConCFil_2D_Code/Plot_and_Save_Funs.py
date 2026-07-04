@@ -9,39 +9,85 @@ import copy
 import Filament_Class_Funs_Analysis as FCFA
 
 
-def Plot_Origin_Data(clumpsObj,figsize=(8,6),fontsize=12,spacing=12*u.arcmin,save_path=None):
+def Plot_Origin_Data(clumpsObj, figsize=(8, 6), fontsize=12, cmap='viridis', tick_logic=True, cbar_logic=True,\
+                     spacing=12*u.arcmin, save_path=None):
     fig = plt.figure(figsize=figsize)
-    ax0 = fig.add_subplot(111,projection=clumpsObj.data_wcs.celestial)
-    plt.rcParams['xtick.direction'] = 'in'
-    plt.rcParams['ytick.direction'] = 'in'
-    plt.rcParams['xtick.color'] = 'red'
-    plt.rcParams['ytick.color'] = 'red'
-    plt.xlabel("Galactic Longutide",fontsize=fontsize)
-    plt.ylabel("Galactic Latitude",fontsize=fontsize)
+    if tick_logic:
+        ax0 = fig.add_subplot(111,projection=clumpsObj.data_wcs.celestial)
+        plt.rcParams['xtick.direction'] = 'in'
+        plt.rcParams['ytick.direction'] = 'in'
+        plt.rcParams['xtick.color'] = 'green'
+        plt.rcParams['ytick.color'] = 'green'
+        plt.xlabel("Galactic Longitude",fontsize=fontsize)
+        plt.ylabel("Galactic Latitude",fontsize=fontsize)
+        ax0.coords[0].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+        ax0.coords[1].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+        lon = ax0.coords[0]
+        lat = ax0.coords[1]
+        lon.set_major_formatter("d.d")
+        lat.set_major_formatter("d.d")
+        if spacing != None:
+            lon.set_ticks(spacing=spacing)
+            lat.set_ticks(spacing=spacing)
+        ax0.tick_params(axis='both', which='major', labelsize=fontsize)
+    else:
+        ax0 = fig.add_subplot(111)
+        ax0.set_xticks([]), ax0.set_yticks([])
 
-    lon = ax0.coords[0]
-    lat = ax0.coords[1]
-    lon.set_major_formatter("d.d")
-    lat.set_major_formatter("d.d")
-    lon.set_ticks(spacing=spacing)
-    gci = plt.imshow(clumpsObj.origin_data,cmap='gray')
-    cbar = plt.colorbar(gci,pad=0)
-    cbar.set_label('K ',fontsize=fontsize)
-    if save_path!=None:
+    show_data = clumpsObj.origin_data 
+    vmin = np.min(show_data[show_data != 0])
+    vmax = np.nanpercentile(show_data[np.where(show_data != 0)], 99.5)
+    gci = ax0.imshow(show_data,
+               origin='lower',
+               interpolation='none',
+               cmap = cmap,
+               norm=mcolors.Normalize(vmin=vmin, vmax=vmax))
+    if cbar_logic:
+        cbar = plt.colorbar(gci, pad=0)
+        cbar.set_label('K km s$^{-1}$', fontsize=fontsize, color='black')
+        cbar.ax.tick_params(axis='y', colors='black', labelsize=fontsize)
+    if save_path != None:
         plt.savefig(save_path, format='pdf', dpi=1000)
-    plt.show()
+    return ax0
 
-def Plot_Clumps_Infor(clumpsObj,figsize=(8,6),text_num=False,line_scale=3,save_path=None):
+
+def Plot_Clumps_Infor(clumpsObj,clump_ids=None,figsize=(8, 6),line_scale=3,num_text=True,tick_logic=True,cbar_logic=True,\
+                      contour_logic=True,cmap='viridis',fontsize=12,spacing=12*u.arcmin,save_path=None):
     centers = clumpsObj.centers
     angles = clumpsObj.angles
     edges = clumpsObj.edges
     clumps_data = np.zeros_like(clumpsObj.origin_data)
-    for i in range(len(clumpsObj.clump_coords_dict)):
-        clumps_data[clumpsObj.clump_coords_dict[i][:,0],clumpsObj.clump_coords_dict[i][:,1]] = \
-             clumpsObj.origin_data[clumpsObj.clump_coords_dict[i][:,0],clumpsObj.clump_coords_dict[i][:,1]]
-        
-    fig,(ax0)= plt.subplots(1,1, figsize=figsize)
-    for index in range(len(centers)):
+    if clump_ids is None:
+        clump_ids = np.arange(len(clumpsObj.clump_coords_dict))
+    for i in clump_ids:
+        clump_coords = (clumpsObj.clump_coords_dict[i][:, 0], clumpsObj.clump_coords_dict[i][:, 1])
+        clumps_data[clump_coords] = clumpsObj.origin_data[clump_coords]
+
+    fig = plt.figure(figsize=figsize)
+    if tick_logic:
+        ax0 = fig.add_subplot(111,projection=clumpsObj.data_wcs.celestial)
+        plt.rcParams['xtick.direction'] = 'in'
+        plt.rcParams['ytick.direction'] = 'in'
+        plt.rcParams['xtick.color'] = 'green'
+        plt.rcParams['ytick.color'] = 'green'
+        plt.xlabel("Galactic Longitude",fontsize=fontsize)
+        plt.ylabel("Galactic Latitude",fontsize=fontsize)
+        ax0.coords[0].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+        ax0.coords[1].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+        lon = ax0.coords[0]
+        lat = ax0.coords[1]
+        lon.set_major_formatter("d.d")
+        lat.set_major_formatter("d.d")
+        if spacing != None:
+            lon.set_ticks(spacing=spacing)
+            lat.set_ticks(spacing=spacing)
+        ax0.tick_params(axis='both', which='major', labelsize=fontsize)
+    else:
+        ax0 = fig.add_subplot(111)
+        ax0.set_xticks([]), ax0.set_yticks([])
+
+    clump_item = np.zeros_like(clumpsObj.origin_data)
+    for index in clump_ids:
         center_x = centers[index][0]
         center_y = centers[index][1]
         cen_x1 = center_x + line_scale*np.sin(np.deg2rad(angles[index]))
@@ -49,33 +95,40 @@ def Plot_Clumps_Infor(clumpsObj,figsize=(8,6),text_num=False,line_scale=3,save_p
         cen_x2 = center_x - line_scale*np.sin(np.deg2rad(angles[index]))
         cen_y2 = center_y - line_scale*np.cos(np.deg2rad(angles[index]))
         if edges[index] == 0:
-            lines = plt.plot([cen_y1,center_y,cen_y2],[cen_x1,center_x,cen_x2])
-            plt.setp(lines[0], linewidth=2,color = 'red',marker='.',markersize=3)
+            ax0.plot([cen_y1,cen_y2],[cen_x1,cen_x2],linewidth=2,color = 'red',marker='.',markersize=3)
         ax0.plot(center_y,center_x,'r*',markersize = 6)
-        if text_num:
+        if num_text:
             ax0.text(center_y,center_x,"{}".format(index),color='r',fontsize=10)
 
-        clump_item = np.zeros_like(clumpsObj.origin_data)
-        clump_coords = (clumpsObj.clump_coords_dict[index][:,0],clumpsObj.clump_coords_dict[index][:,1])
-        clump_item[clump_coords] = clumpsObj.origin_data[clump_coords]
-        contour_data = np.zeros_like(clump_item)
-        core_x = np.array(np.where(clump_item != 0)[0])
-        core_y = np.array(np.where(clump_item != 0)[1])
-        contour_data[core_x,core_y] = 1   
-        contour_data[np.where(contour_data!=0)] = 1
-        contour = measure.find_contours(contour_data,0.5)
-        ax0.plot(contour[0][:,1],contour[0][:,0],linewidth=2)
-        
-    ax0.imshow(clumps_data,
-               origin='lower',
-               cmap='gray',
-               interpolation='none')
-    ax0.contourf(clumps_data,
-                 levels = [0., .1],
+        if contour_logic:
+            clump_coords = (clumpsObj.clump_coords_dict[index][:,0],clumpsObj.clump_coords_dict[index][:,1])
+            clump_item[clump_coords] = clumpsObj.origin_data[clump_coords]
+            contour_data = np.zeros_like(clump_item)
+            core_x = np.array(np.where(clump_item != 0)[0])
+            core_y = np.array(np.where(clump_item != 0)[1])
+            contour_data[core_x,core_y] = 1   
+            contour_data[np.where(contour_data!=0)] = 1
+            contour = measure.find_contours(contour_data,0.5)
+            ax0.plot(contour[0][:,1],contour[0][:,0],linewidth=2)
+            clump_item[clump_coords] = 0
+
+    show_data = clumps_data
+    vmin = np.min(show_data[show_data != 0])
+    vmax = np.nanpercentile(show_data[np.where(show_data != 0)], 99.5)
+    gci = ax0.imshow(show_data,
+               origin = 'lower',
+               interpolation = 'none',
+               cmap = cmap,
+               norm = mcolors.Normalize(vmin=vmin, vmax=vmax))
+    ax0.contourf(show_data,
+                 levels = [0., .0001],
                  colors = 'w')
+    if cbar_logic:
+        cbar = plt.colorbar(gci, pad=0)
+        cbar.set_label('K km s$^{-1}$', fontsize=fontsize, color='black')
+        cbar.ax.tick_params(axis='y', colors='black', labelsize=fontsize)
     fig.tight_layout()
-    plt.xticks([]),plt.yticks([])
-    if save_path!=None:
+    if save_path != None:
         plt.savefig(save_path, format='pdf', dpi=1000)
     return ax0
     
@@ -133,10 +186,12 @@ def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, lw=2, plot_cuts
 
     plt.rcParams['xtick.direction'] = 'in'
     plt.rcParams['ytick.direction'] = 'in'
-    plt.rcParams['xtick.color'] = 'red'
-    plt.rcParams['ytick.color'] = 'red'
+    plt.rcParams['xtick.color'] = 'green'
+    plt.rcParams['ytick.color'] = 'green'
     plt.xlabel("Galactic Longitude", fontsize=fontsize)
     plt.ylabel("Galactic Latitude", fontsize=fontsize)
+    ax0.coords[0].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
+    ax0.coords[1].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
     lon = ax0.coords[0]
     lat = ax0.coords[1]
     lon.set_major_formatter("d.d")

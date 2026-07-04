@@ -10,7 +10,7 @@ from . import Filament_Class_Funs_Analysis as FCFA
 
 
 def Plot_Origin_Data(clumpsObj, figsize=(8, 6), fontsize=12, cmap='viridis', tick_logic=True, cbar_logic=True,\
-                     spacing=12*u.arcmin, save_path=None):
+                     degree_logic=False, spacing=12*u.arcmin, save_path=None, contourf_logic=False):
     fig = plt.figure(figsize=figsize)
     if tick_logic:
         ax0 = fig.add_subplot(111,projection=clumpsObj.data_wcs.celestial)
@@ -24,8 +24,9 @@ def Plot_Origin_Data(clumpsObj, figsize=(8, 6), fontsize=12, cmap='viridis', tic
         ax0.coords[1].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
         lon = ax0.coords[0]
         lat = ax0.coords[1]
-        lon.set_major_formatter("d.d")
-        lat.set_major_formatter("d.d")
+        if degree_logic:
+            lon.set_major_formatter("d.d")
+            lat.set_major_formatter("d.d")
         if spacing != None:
             lon.set_ticks(spacing=spacing)
             lat.set_ticks(spacing=spacing)
@@ -42,6 +43,10 @@ def Plot_Origin_Data(clumpsObj, figsize=(8, 6), fontsize=12, cmap='viridis', tic
                interpolation='none',
                cmap = cmap,
                norm=mcolors.Normalize(vmin=vmin, vmax=vmax))
+    if contourf_logic:
+        ax0.contourf(show_data,
+                    levels=[0., .0001],
+                    colors='w')
     if cbar_logic:
         cbar = plt.colorbar(gci, pad=0)
         cbar.set_label('K km s$^{-1}$', fontsize=fontsize, color='black')
@@ -51,8 +56,8 @@ def Plot_Origin_Data(clumpsObj, figsize=(8, 6), fontsize=12, cmap='viridis', tic
     return ax0
 
 
-def Plot_Clumps_Infor(clumpsObj,clump_ids=None,figsize=(8, 6),line_scale=3,num_text=True,tick_logic=True,cbar_logic=True,\
-                      cmap='viridis',fontsize=12,spacing=12*u.arcmin,save_path=None):
+def Plot_Clumps_Infor(clumpsObj,clump_ids=None,figsize=(8, 6),clump_logic=True,line_scale=3,num_text=True,tick_logic=True,cbar_logic=True,\
+                      cmap='viridis',fontsize=12,degree_logic=False,spacing=12*u.arcmin,save_path=None):
     centers = clumpsObj.centers
     angles = clumpsObj.angles
     edges = clumpsObj.edges
@@ -77,8 +82,9 @@ def Plot_Clumps_Infor(clumpsObj,clump_ids=None,figsize=(8, 6),line_scale=3,num_t
         ax0.coords[1].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
         lon = ax0.coords[0]
         lat = ax0.coords[1]
-        lon.set_major_formatter("d.d")
-        lat.set_major_formatter("d.d")
+        if degree_logic:
+            lon.set_major_formatter("d.d")
+            lat.set_major_formatter("d.d")
         if spacing != None:
             lon.set_ticks(spacing=spacing)
             lat.set_ticks(spacing=spacing)
@@ -87,18 +93,19 @@ def Plot_Clumps_Infor(clumpsObj,clump_ids=None,figsize=(8, 6),line_scale=3,num_t
         ax0 = fig.add_subplot(111)
         ax0.set_xticks([]), ax0.set_yticks([])
 
-    for index in clump_ids:
-        center_x = centers[index][1]
-        center_y = centers[index][2]
-        cen_x1 = center_x + line_scale * np.sin(np.deg2rad(angles[index]))
-        cen_y1 = center_y + line_scale * np.cos(np.deg2rad(angles[index]))
-        cen_x2 = center_x - line_scale * np.sin(np.deg2rad(angles[index]))
-        cen_y2 = center_y - line_scale * np.cos(np.deg2rad(angles[index]))
-        if edges[index] == 0:
-            ax0.plot([cen_y1,cen_y2],[cen_x1,cen_x2],linewidth=2,color = 'red',marker='.',markersize=3)
-        ax0.plot(center_y,center_x,color='red',marker='*',markersize = 6)
-        if num_text==True:
-            ax0.text(center_y,center_x,"{}".format(index),color='red',fontsize=fontsize-2)
+    if clump_logic:
+        for index in clump_ids:
+            center_x = centers[index][1]
+            center_y = centers[index][2]
+            cen_x1 = center_x + line_scale * np.sin(np.deg2rad(angles[index]))
+            cen_y1 = center_y + line_scale * np.cos(np.deg2rad(angles[index]))
+            cen_x2 = center_x - line_scale * np.sin(np.deg2rad(angles[index]))
+            cen_y2 = center_y - line_scale * np.cos(np.deg2rad(angles[index]))
+            if edges[index] == 0:
+                ax0.plot([cen_y1,cen_y2],[cen_x1,cen_x2],linewidth=2,color = 'red',marker='.',markersize=3)
+            ax0.plot(center_y,center_x,color='red',marker='*',markersize = 6)
+            if num_text==True:
+                ax0.text(center_y,center_x,"{}".format(index),color='red',fontsize=fontsize-2)
 
     show_data = clumps_data.sum(0) * clumpsObj.delta_v
     vmin = np.min(show_data[show_data != 0])
@@ -121,7 +128,8 @@ def Plot_Clumps_Infor(clumpsObj,clump_ids=None,figsize=(8, 6),line_scale=3,num_t
     return ax0
 
 
-def Plot_Clumps_Infor_By_Ids(clumpsObj,clump_ids,figsize=(16,14),fontsize=14,line_scale=3,save_path=None):
+def Plot_Clumps_Infor_By_Ids(clumpsObj,clump_ids,figsize=(16,14),fontsize=14,line_scale=3,\
+                             degree_logic=False, spacing=12 * u.arcmin, save_path=None):
     clump_angles = clumpsObj.angles
     clump_edges = clumpsObj.edges
     clump_centers = clumpsObj.centers
@@ -166,8 +174,12 @@ def Plot_Clumps_Infor_By_Ids(clumpsObj,clump_ids,figsize=(16,14),fontsize=14,lin
     ax0.tick_params(axis='both', which='major', labelsize=fontsize)
     lon = ax0.coords[0]
     lat = ax0.coords[1]
-    lon.set_major_formatter("d.d")
-    lat.set_major_formatter("d.d")
+    if degree_logic:
+        lon.set_major_formatter("d.d")
+        lat.set_major_formatter("d.d")
+    if spacing != None:
+        lon.set_ticks(spacing=spacing)
+        lat.set_ticks(spacing=spacing)
 #     fig.tight_layout()
 #     plt.xticks([]),plt.yticks([])
     if save_path!=None:
@@ -175,7 +187,8 @@ def Plot_Clumps_Infor_By_Ids(clumpsObj,clump_ids,figsize=(16,14),fontsize=14,lin
     return filament_item
 
 
-def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, lw=2, plot_cuts=False, plot_peaks=False, spacing=12 * u.arcmin, save_path=None):
+def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, lw=2, plot_cuts=False, plot_peaks=False, \
+                       degree_logic=False, spacing=12 * u.arcmin, save_path=None):
     # filament_com = filamentObj.filament_com
     filament_com_wcs = filamentObj.filament_com_wcs
     filament_ratio = filamentObj.filament_ratio
@@ -236,8 +249,9 @@ def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, lw=2, plot_cuts
     ax0.tick_params(axis='both', which='major', labelsize=fontsize)
     lon = ax0.coords[0]
     lat = ax0.coords[1]
-    lon.set_major_formatter("d.d")
-    lat.set_major_formatter("d.d")
+    if degree_logic:
+        lon.set_major_formatter("d.d")
+        lat.set_major_formatter("d.d")
     if spacing != None:
         lon.set_ticks(spacing=spacing)
         lat.set_ticks(spacing=spacing)
@@ -258,7 +272,7 @@ def Plot_Filament_Item(filamentObj, figsize=(8, 6), fontsize=12, lw=2, plot_cuts
 
 
 def Plot_Filament(filamentObj,figsize=(8, 6),colors=None,background='fils_data',cmap='gray', tick_logic=True, \
-                  lw=2, fontsize=12,spacing=12*u.arcmin,save_path=None):
+                  lw=2, fontsize=12, degree_logic=False, spacing=12*u.arcmin,save_path=None):
     data_wcs = filamentObj.clumpsObj.data_wcs
     origin_data = filamentObj.clumpsObj.origin_data
     regions_data = filamentObj.clumpsObj.regions_data
@@ -280,8 +294,9 @@ def Plot_Filament(filamentObj,figsize=(8, 6),colors=None,background='fils_data',
         ax0.coords[1].set_ticklabel(fontproperties={'family': 'DejaVu Sans'})
         lon = ax0.coords[0]
         lat = ax0.coords[1]
-        lon.set_major_formatter("d.d")
-        lat.set_major_formatter("d.d")
+        if degree_logic:
+            lon.set_major_formatter("d.d")
+            lat.set_major_formatter("d.d")
         if spacing != None:
             lon.set_ticks(spacing=spacing)
             lat.set_ticks(spacing=spacing)
@@ -489,8 +504,7 @@ def Plot_Filament_Profile(filamentObj, figsize=(8, 6), fontsize=16, xlims=(-30, 
     return ax0
 
 
-def Plot_Clumps_Velocity(filamentObj, figsize=(8, 6), fontsize=12, spacing=12 * u.arcmin, save_path=None):
-    data_wcs = filamentObj.clumpsObj.data_wcs
+def Plot_Clumps_Velocity(filamentObj, figsize=(8, 6), fontsize=12, save_path=None):
     origin_data = filamentObj.clumpsObj.origin_data
     regions_data = filamentObj.clumpsObj.regions_data
     filament_regions_data = filamentObj.filament_regions_data
@@ -608,7 +622,7 @@ def Get_SR_Of_Fil(filamentObj,filament_clumps_id,sr_coords_dict, srs_array):
     sr_item,data_wcs_item,start_coords = Get_Item_Infor_By_Coords(origin_data,signal_coords,data_wcs)
     return sr_item,data_wcs_item,start_coords
 
-def Plot_SR_And_Fil(filamentObj,filament_clumps_id,figsize=(8, 6),fontsize=12,spacing=12*u.arcmin,save_path=None):
+def Plot_SR_And_Fil(filamentObj,filament_clumps_id,figsize=(8, 6),fontsize=12,degree_logic=False,spacing=12*u.arcmin,save_path=None):
     clump_centers = filamentObj.clumpsObj.centers
     clump_angles = filamentObj.clumpsObj.angles
     filament_coords = filamentObj.filament_coords
@@ -663,8 +677,9 @@ def Plot_SR_And_Fil(filamentObj,filament_clumps_id,figsize=(8, 6),fontsize=12,sp
     ax0.tick_params(axis='both', which='major', labelsize=fontsize)
     lon = ax0.coords[0]
     lat = ax0.coords[1]
-    lon.set_major_formatter("d.d")
-    lat.set_major_formatter("d.d")
+    if degree_logic:
+        lon.set_major_formatter("d.d")
+        lat.set_major_formatter("d.d")
     if spacing != None:
         lon.set_ticks(spacing=spacing)
         lat.set_ticks(spacing=spacing)
@@ -674,7 +689,7 @@ def Plot_SR_And_Fil(filamentObj,filament_clumps_id,figsize=(8, 6),fontsize=12,sp
 
 
 def Plot_Substructure_Tree(filamentObj,circle_radius=1.5,lw=2,color='green',cmap='gray',num_text=False,\
-                           figsize=(8, 6),fontsize=12,spacing=12 * u.arcmin,markersize=10):
+                           figsize=(8, 6),fontsize=12,degree_logic=False,spacing=None,markersize=10):
     filament_centers_LBV = filamentObj.filament_centers_LBV - filamentObj.start_coords[::-1]
     filament_item = filamentObj.filament_item
     filament_com = filamentObj.filament_com_item
@@ -727,8 +742,9 @@ def Plot_Substructure_Tree(filamentObj,circle_radius=1.5,lw=2,color='green',cmap
     ax0.tick_params(axis='both', which='major', labelsize=fontsize)
     lon = ax0.coords[0]
     lat = ax0.coords[1]
-    lon.set_major_formatter("d.d")
-    lat.set_major_formatter("d.d")
+    if degree_logic:
+        lon.set_major_formatter("d.d")
+        lat.set_major_formatter("d.d")
     if spacing != None:
         lon.set_ticks(spacing=spacing)
         lat.set_ticks(spacing=spacing)

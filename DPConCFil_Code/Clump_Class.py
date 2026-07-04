@@ -133,7 +133,8 @@ class ClumpInfor(object):
             centers_wcs = np.array([outcat_wcs_table['Cen1'], outcat_wcs_table['Cen2'], outcat_wcs_table['Cen3']]).T
             edges = outcat_table['Edge']  # Edge flags for regions near data boundaries
             angles = outcat_table['Angle']  # Orientation angles of clumps
-
+            sizes = np.array([outcat_table['Size3'], outcat_table['Size2'] - 1, outcat_table['Size1'] - 1]).T
+            
             # Get region properties from the mask using scikit-image
             regions_list = measure.regionprops(regions_data)
             
@@ -205,6 +206,7 @@ class ClumpInfor(object):
             self.peaks = peaks
             self.edges = edges
             self.angles = angles
+            self.sizes = sizes
             self.signal_regions_array = srs_array
             self.signal_regions_list = srs_list
             self.sr_coords_dict = sr_coords_dict
