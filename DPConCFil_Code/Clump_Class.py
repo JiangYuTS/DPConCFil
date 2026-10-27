@@ -13,7 +13,7 @@ import FacetClumps
 from FacetClumps.Detect_Files import Detect as DF_FacetClumps
 from FacetClumps.Cal_Tables_From_Mask_Funs import Cal_Tables_From_Mask as DF_FacetClumps_Mask
 
-from FacetClumps_Code import FacetClumps_EDGS
+from FacetClumps import FacetClumps_EDGS
 
 # Import local module for clump classification functions
 from . import Clump_Class_Funs
