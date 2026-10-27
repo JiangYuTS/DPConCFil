@@ -13,6 +13,8 @@ import FacetClumps
 from FacetClumps.Detect_Files import Detect as DF_FacetClumps
 from FacetClumps.Cal_Tables_From_Mask_Funs import Cal_Tables_From_Mask as DF_FacetClumps_Mask
 
+from FacetClumps_Code import FacetClumps_EDGS
+
 # Import local module for clump classification functions
 from . import Clump_Class_Funs
 
@@ -51,7 +53,7 @@ class ClumpInfor(object):
         # Replace NaN values with -999 to avoid computational issues
         origin_data[np.isnan(origin_data)] = -999
         # Create WCS object for coordinate transformations between pixel and sky coordinates
-        data_header['CTYPE3'] = 'VELO'  
+        # data_header['CTYPE3'] = 'VELO'  
         data_wcs = wcs.WCS(data_header)
 
         # Store essential data as object attributes
@@ -65,38 +67,53 @@ class ClumpInfor(object):
         data_ranges_lbv = Clump_Class_Funs.Get_Data_Ranges_WCS(self.origin_data, self.data_wcs)
         self.data_ranges_lbv = data_ranges_lbv
         # Calculate velocity resolution (delta_v) - the step size in velocity dimension
-        delta_v = (data_ranges_lbv[2][1] - data_ranges_lbv[2][0]) / origin_data_shape[0]
-        # Round to 3 decimal places for readability
-        self.delta_v = np.around(delta_v, 3)
-        
+        # delta_v = (data_ranges_lbv[2][1] - data_ranges_lbv[2][0]) / origin_data_shape[0]
+        # Round to 3 decimal places
+        self.delta_v = np.around(data_wcs.proj_plane_pixel_scales()[2].to(u.km/u.s).value, 3)
+        self.pix_scale_arcmin = data_wcs.proj_plane_pixel_scales()[0].to(u.arcmin).value
+
+    # Add these imports alongside the existing imports.
+
 
     def Cal_Infor_From_Mask_Or_Algorithm(self, mask_or_algorithm='FacetClumps', parameters=None):
         """
-        Calculate clump information either from a predefined mask or using a detection algorithm.
-        
-        Parameters:
-        -----------
+        Calculate clump information from a predefined mask or a detection algorithm.
+
+        Parameters
+        ----------
         mask_or_algorithm : str
-            Either 'FacetClumps' to use the FacetClumps algorithm or 'mask' to use a predefined mask
+            'FacetClumps' for standard detection, 'FacetClumps_EDGS' for EDGS Way 2,
+            or 'mask' to calculate properties from an existing mask.
         parameters : list
-            Parameters for the chosen algorithm, typically [RMS, Threshold] for FacetClumps
-            where RMS is the noise level and Threshold is detection significance level
+            [RMS, Threshold, SWindow, KBins, FwhmBeam, VeloRes, SRecursionLBV].
+            Threshold is an intensity value, such as 5 * RMS, rather than a multiplier.
         """
         self.parameters = parameters
+
         if mask_or_algorithm == 'FacetClumps':
-            # Use the FacetClumps algorithm to detect clumps and generate tables
-            # This creates a mask file and catalogs in both pixel and WCS coordinates
-            did_tables_FacetClumps = DF_FacetClumps(self.file_name, self.parameters, self.mask_name, self.outcat_name,
-                                                    self.outcat_wcs_name)
+            # Detect clumps and generate the mask, pixel catalog, and WCS catalog.
+            did_tables_FacetClumps = DF_FacetClumps(self.file_name, self.parameters, self.mask_name,
+                                                self.outcat_name, self.outcat_wcs_name)
+            self.did_tables = did_tables_FacetClumps
+
+        elif mask_or_algorithm == 'FacetClumps_EDGS':
+            # Way 2: identify SRs in the original intensity cube without S/N normalization.
+            RMS, Threshold = self.parameters[:2]
+            save_folder = os.path.dirname(os.path.abspath(self.mask_name))
+            os.makedirs(save_folder, exist_ok=True)
+            srs_list, origin_data_T = FacetClumps_EDGS.Cal_SRs_List(RMS, Threshold, self.file_name)
+
+            # Detect clumps within each SR and merge their labels into the global mask.
+            did_tables_FacetClumps, clump_mask_array, numbers = FacetClumps_EDGS.Detect_By_SR(
+                srs_list, self.file_name, origin_data_T, self.parameters, save_folder)
             self.did_tables = did_tables_FacetClumps
 
         elif mask_or_algorithm == 'mask':
-            # Use a predefined mask to identify regions and generate tables
+            # Use the existing mask to identify clumps and calculate their properties.
             did_tables_mask = Clump_Class_Funs.Detect_From_Regions(self)
-            # # self.did_tables = did_tables_mask 
 
         else:
-            # Raise error if invalid option is provided
+            # Reject unsupported detection modes.
             raise TypeError("Please choose an algorithm or give a mask.")
 
     
